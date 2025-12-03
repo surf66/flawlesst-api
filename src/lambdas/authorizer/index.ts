@@ -3,12 +3,6 @@ import { APIGatewayRequestAuthorizerEvent, APIGatewayAuthorizerResult, Context }
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION });
 
-interface AuthorizerResponse {
-  isAuthorized: boolean;
-  context?: Record<string, any>;
-  ttl?: number;
-}
-
 export const handler = async (
   event: APIGatewayRequestAuthorizerEvent,
   _context: Context
