@@ -12,7 +12,7 @@ export class FlawlesstApiStack extends Stack {
 
     const healthLambda = new nodejs.NodejsFunction(this, 'HealthLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      entry: path.join(__dirname, '../../src/lambdas/health/index.ts'),
+      entry: path.join(__dirname, '../src/lambdas/health/index.ts'),
       handler: 'handler',
       memorySize: 256,
       timeout: Duration.seconds(5),

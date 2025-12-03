@@ -1,5 +1,5 @@
 {
-  "name": "flawlesst-api-infra",
+  "name": "flawlesst-api",
   "version": "0.1.0",
   "bin": {
     "cdk": "cdk.mjs"

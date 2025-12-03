@@ -15,8 +15,8 @@
     "rootDir": "."
   },
   "include": [
-    "infrastructure/**/*.ts",
     "src/**/*.ts",
-    "bin/**/*.ts"
+    "bin/**/*.ts",
+    "liv/**/*.ts"
   ]
 }
