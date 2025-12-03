@@ -38,7 +38,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: CDK synth
+        working-directory: ./infrastructure
         run: npm run cdk:synth
 
       - name: CDK deploy
+        working-directory: ./infrastructure
         run: npm run cdk:deploy
