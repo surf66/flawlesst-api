@@ -37,10 +37,8 @@ jobs:
           role-session-name: flawlesst-api-cdk-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      # - name: CDK synth
-      #   working-directory: ./infrastructure
-      #   run: npm run cdk:synth
+      - name: CDK synth
+        run: npm run cdk:synth
 
       - name: CDK deploy
-        working-directory: ./infrastructure
         run: npm run cdk:deploy
