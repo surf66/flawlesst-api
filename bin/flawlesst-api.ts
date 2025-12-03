@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { FlawlesstApiStack } from '../infrastructure/lib/flawlesst-api-stack';
+import { FlawlesstApiStack } from '../lib/flawlesst-api-stack';
 
 const app = new cdk.App();
 
