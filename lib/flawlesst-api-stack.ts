@@ -57,7 +57,7 @@ export class FlawlesstApiStack extends Stack {
     // Add resource and method with API key required
     const healthResource = api.root.addResource('health');
     healthResource.addMethod('GET', new apigw.LambdaIntegration(healthLambda), {
-      apiKeyRequired: false,
+      apiKeyRequired: true,
       operationName: 'GetHealth',
       methodResponses: [{
         statusCode: '200',
