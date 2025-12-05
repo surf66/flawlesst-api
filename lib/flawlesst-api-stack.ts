@@ -3,6 +3,9 @@ import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as path from 'path';
 
 export class FlawlesstApiStack extends Stack {
@@ -16,6 +19,52 @@ export class FlawlesstApiStack extends Stack {
       memorySize: 256,
       timeout: Duration.seconds(5),
     });
+
+    const sourceBucket = new s3.Bucket(this, 'SourceCodeBucket', {
+      versioned: false,
+    });
+
+    const cloneRepoLambda = new nodejs.NodejsFunction(this, 'CloneRepoLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/clone-repo/index.ts'),
+      handler: 'handler',
+      memorySize: 512,
+      timeout: Duration.seconds(60),
+    });
+
+    sourceBucket.grantWrite(cloneRepoLambda);
+
+    const cloneTask = new tasks.LambdaInvoke(this, 'CloneRepoTask', {
+      lambdaFunction: cloneRepoLambda,
+      payload: sfn.TaskInput.fromObject({
+        'owner.$': '$.owner',
+        'repo.$': '$.repo',
+        'branch.$': '$.branch',
+        'githubToken.$': '$.githubToken',
+        'executionId.$': '$$.Execution.Id',
+        sourceBucket: sourceBucket.bucketName,
+      }),
+      resultPath: '$.cloneResult',
+    });
+
+    const stateMachine = new sfn.StateMachine(this, 'ConnectProjectStateMachine', {
+      definition: cloneTask,
+      timeout: Duration.minutes(5),
+    });
+
+    const startCloneLambda = new nodejs.NodejsFunction(this, 'StartCloneExecutionLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/start-clone-execution/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        SOURCE_BUCKET: sourceBucket.bucketName,
+      },
+    });
+
+    stateMachine.grantStartExecution(startCloneLambda);
 
     // Create REST API
     const api = new apigw.RestApi(this, 'FlawlesstApi', {
@@ -65,6 +114,12 @@ export class FlawlesstApiStack extends Stack {
           'application/json': apigw.Model.EMPTY_MODEL
         }
       }]
+    });
+
+    const cloneRepoResource = api.root.addResource('clone-repo');
+    cloneRepoResource.addMethod('POST', new apigw.LambdaIntegration(startCloneLambda), {
+      apiKeyRequired: true,
+      operationName: 'StartCloneRepo',
     });
 
     // Output the API URL and API key information
