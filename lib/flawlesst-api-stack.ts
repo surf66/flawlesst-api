@@ -47,9 +47,49 @@ export class FlawlesstApiStack extends Stack {
       resultPath: '$.cloneResult',
     });
 
-    const stateMachine = new sfn.StateMachine(this, 'ConnectProjectStateMachine', {
-      definition: cloneTask,
+    // Create the explode-repo Lambda function
+    const explodeRepoLambda = new nodejs.NodejsFunction(this, 'ExplodeRepoLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/explode-repo/index.ts'),
+      handler: 'handler',
+      memorySize: 1024, // May need more memory for large repos
       timeout: Duration.minutes(5),
+      environment: {
+        SOURCE_BUCKET: sourceBucket.bucketName,
+      },
+      // Dependencies are installed at the root level
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    sourceBucket.grantReadWrite(explodeRepoLambda);
+
+    const explodeTask = new tasks.LambdaInvoke(this, 'ExplodeRepoTask', {
+      lambdaFunction: explodeRepoLambda,
+      payload: sfn.TaskInput.fromObject({
+        'Records': [{
+          's3': {
+            'bucket': {
+              'name': sourceBucket.bucketName,
+            },
+            'object': {
+              'key.$': '$.cloneResult.Payload.tarKey',
+            },
+          },
+        }],
+      }),
+      resultPath: '$.explodeResult',
+    });
+
+    // Create the state machine with both tasks
+    const definition = cloneTask
+      .next(explodeTask);
+
+    const stateMachine = new sfn.StateMachine(this, 'ConnectProjectStateMachine', {
+      definition,
+      timeout: Duration.minutes(15), // Increased timeout for the entire workflow
     });
 
     const startCloneLambda = new nodejs.NodejsFunction(this, 'StartCloneExecutionLambda', {
