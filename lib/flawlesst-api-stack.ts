@@ -75,7 +75,7 @@ export class FlawlesstApiStack extends Stack {
               'name': sourceBucket.bucketName,
             },
             'object': {
-              'key.$': '$.cloneResult.Payload.tarKey',
+              'key.$': '$.cloneResult.Payload.sourceKey',
             },
           },
         }],
