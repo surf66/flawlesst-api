@@ -170,7 +170,11 @@ export class FlawlesstApiStack extends Stack {
       memorySize: 256,
       timeout: Duration.seconds(10),
       environment: {
-        GITHUB_WEBHOOK_URL: `${api.url}webhooks/github`,
+        // Avoid referencing api.url here to prevent a circular dependency
+        // This value should be provided from the deployment environment and
+        // should point to the public GitHub webhook endpoint, e.g.
+        // https://your-api-domain/prod/webhooks/github
+        GITHUB_WEBHOOK_URL: process.env.FLAWLESST_GITHUB_WEBHOOK_URL ?? '',
         GITHUB_WEBHOOK_SECRET_BASE: process.env.FLAWLESST_WEBHOOK_SECRET_BASE ?? '',
       },
     });
