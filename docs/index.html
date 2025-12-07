@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Flawlesst API Docs</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/swagger-ui-dist@5.17.7/swagger-ui.css"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      #swagger-ui {
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+
+    <script
+      src="https://unpkg.com/swagger-ui-dist@5.17.7/swagger-ui-bundle.js"
+      crossorigin
+    ></script>
+    <script>
+      window.addEventListener("load", () => {
+        window.ui = SwaggerUIBundle({
+          url: "../openapi.yaml",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          presets: [
+            SwaggerUIBundle.presets.apis,
+            SwaggerUIBundle.SwaggerUIStandalonePreset,
+          ],
+          layout: "BaseLayout",
+        });
+      });
+    </script>
+  </body>
+</html>

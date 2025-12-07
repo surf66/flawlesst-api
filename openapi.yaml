@@ -1,0 +1,228 @@
+openapi: 3.0.3
+info:
+  title: Flawlesst API
+  version: 1.0.0
+  description: |
+    API for connecting projects to Flawlesst and reacting to GitHub events.
+servers:
+  - url: https://api.example.com/prod
+    description: Production API Gateway URL (replace with actual output from CDK)
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: flawlesst-api
+        timestamp:
+          type: string
+          format: date-time
+
+    CloneRepoRequest:
+      type: object
+      required:
+        - owner
+        - repo
+      properties:
+        owner:
+          type: string
+          description: GitHub owner (user or organization)
+          example: surf66
+        repo:
+          type: string
+          description: Repository name
+          example: flawlesst-api
+        branch:
+          type: string
+          description: Branch to clone
+          default: main
+          example: main
+        githubToken:
+          type: string
+          description: GitHub access token used to access the repo
+
+    CloneRepoResponse:
+      type: object
+      properties:
+        executionArn:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+
+    ConnectProjectRequest:
+      type: object
+      required:
+        - owner
+        - repo
+        - githubToken
+      properties:
+        owner:
+          type: string
+          description: GitHub owner (user or organization)
+          example: surf66
+        repo:
+          type: string
+          description: Repository name
+          example: flawlesst-api
+        githubToken:
+          type: string
+          description: GitHub access token with permission to create webhooks on the repo
+
+    ConnectProjectResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Webhook registered
+        owner:
+          type: string
+        repo:
+          type: string
+
+    GitHubWebhookEvent:
+      type: object
+      description: Raw GitHub webhook payload for push events.
+      properties:
+        ref:
+          type: string
+          example: refs/heads/main
+        repository:
+          type: object
+          properties:
+            full_name:
+              type: string
+              example: surf66/flawlesst-api
+        sender:
+          type: object
+          properties:
+            login:
+              type: string
+            type:
+              type: string
+        commits:
+          type: array
+          items:
+            type: object
+            properties:
+              added:
+                type: array
+                items:
+                  type: string
+              modified:
+                type: array
+                items:
+                  type: string
+              removed:
+                type: array
+                items:
+                  type: string
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /clone-repo:
+    post:
+      summary: Start repository clone and analysis workflow
+      operationId: startCloneRepo
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloneRepoRequest"
+      responses:
+        "202":
+          description: Clone workflow started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloneRepoResponse"
+        "400":
+          description: Invalid request body
+        "500":
+          description: Internal error starting workflow
+
+  /connect-project:
+    post:
+      summary: Register GitHub webhook for a project
+      description: |
+        Registers a push webhook on the specified GitHub repository so that
+        Flawlesst is notified on future pushes.
+      operationId: connectProject
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectProjectRequest"
+      responses:
+        "201":
+          description: Webhook successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectProjectResponse"
+        "400":
+          description: Missing or invalid request body
+        "502":
+          description: Failed to register webhook with GitHub
+        "500":
+          description: Internal error
+
+  /webhooks/github:
+    post:
+      summary: GitHub webhook receiver
+      description: |
+        Public endpoint that receives GitHub webhook events.
+
+        Security is enforced via the X-Hub-Signature-256 header using a
+        shared secret derived from an internal base secret and the
+        repository full name.
+
+        Only push events on selected branches are processed, and events
+        that only touch documentation or are authored by bots are
+        ignored to save compute.
+      operationId: githubWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitHubWebhookEvent"
+      responses:
+        "202":
+          description: Event accepted or ignored after filtering
+        "400":
+          description: Invalid payload
+        "401":
+          description: Signature verification failed
+        "500":
+          description: Internal error
