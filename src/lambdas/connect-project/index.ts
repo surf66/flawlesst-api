@@ -102,9 +102,9 @@ export const handler = async (
     };
   }
 
-  const { owner, repo, githubToken, branch = 'main' } = payload;
+  const { owner, repo, githubToken, branch = 'main', userId, projectId } = payload;
 
-  if (!owner || !repo || !githubToken) {
+  if (!owner || !repo || !githubToken || !userId || !projectId) {
     return {
       statusCode: 400,
       body: JSON.stringify({ message: 'owner, repo and githubToken are required' }),
@@ -145,7 +145,7 @@ export const handler = async (
 
     if (stateMachineArn && sourceBucket) {
       try {
-        const input = JSON.stringify({ owner, repo, branch, githubToken, sourceBucket });
+        const input = JSON.stringify({ owner, repo, branch, githubToken, sourceBucket, userId, projectId });
         const command = new StartExecutionCommand({
           stateMachineArn,
           input,

@@ -42,6 +42,8 @@ export class FlawlesstApiStack extends Stack {
         'branch.$': '$.branch',
         'githubToken.$': '$.githubToken',
         'executionId.$': '$$.Execution.Id',
+        'userId.$': '$.userId',
+        'projectId.$': '$.projectId',
         sourceBucket: sourceBucket.bucketName,
       }),
       resultPath: '$.cloneResult',
@@ -79,6 +81,8 @@ export class FlawlesstApiStack extends Stack {
             },
           },
         }],
+        'userId.$': '$.userId',
+        'projectId.$': '$.projectId',
       }),
       resultPath: '$.explodeResult',
     });

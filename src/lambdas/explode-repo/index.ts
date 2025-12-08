@@ -1,5 +1,4 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { S3Event } from 'aws-lambda';
 import { Readable } from 'stream';
 import { createGunzip } from 'zlib';
 import { pipeline } from 'stream/promises';
@@ -47,13 +46,18 @@ interface FileInfo {
   content: Buffer;
 }
 
-export const handler = async (event: S3Event): Promise<{ filePaths: string[] }> => {
+export const handler = async (event: any): Promise<{ filePaths: string[] }> => {
   try {
     const record = event.Records[0];
     const sourceKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
-    const jobId = path.basename(sourceKey, '.tar.gz');
-    
-    console.log(`Processing job ${jobId} from ${sourceKey}`);
+    const userId = event.userId as string | undefined;
+    const projectId = event.projectId as string | undefined;
+
+    if (!userId || !projectId) {
+      throw new Error('userId and projectId are required in event');
+    }
+
+    console.log(`Processing user ${userId} project ${projectId} from ${sourceKey}`);
 
     // Get the .tar.gz file from S3
     const { Body: fileStream } = await s3.send(new GetObjectCommand({
@@ -92,7 +96,7 @@ export const handler = async (event: S3Event): Promise<{ filePaths: string[] }> 
           }
           
           const content = Buffer.concat(chunks);
-          const s3Key = `jobs/${jobId}/${relativePath}`;
+          const s3Key = `${userId}/${projectId}/${relativePath}`;
           
           files.push({
             key: s3Key,
@@ -122,9 +126,9 @@ export const handler = async (event: S3Event): Promise<{ filePaths: string[] }> 
     
     console.log(`Successfully uploaded ${uploadedFiles.length}/${files.length} files`);
     
-    // Return the list of uploaded file paths (relative to the job directory)
+    // Return the list of uploaded file paths (relative to the user/project directory)
     const filePaths = uploadedFiles.map(fullPath => 
-      fullPath.replace(`jobs/${jobId}/`, '')
+      fullPath.replace(`${userId}/${projectId}/`, '')
     );
     
     return {
