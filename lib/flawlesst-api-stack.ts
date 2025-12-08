@@ -364,26 +364,23 @@ export class FlawlesstApiStack extends Stack {
       },
     });
 
-    // Step Functions integration for starting the clone/explode workflow
-    const startWorkflowIntegration = new apigw.Integration({
-      integrationHttpMethod: 'POST',
-      type: apigw.IntegrationType.AWS_PROXY,
-      uri: `arn:aws:apigateway:${this.region}:states:action/StartExecution`,
-      options: {
-        integrationResponses: [
-          {
-            statusCode: '200',
-          },
-        ],
-        requestTemplates: {
-          'application/json': JSON.stringify({
-            stateMachineArn: cloneExplodeStateMachine.stateMachineArn,
-            input: `$util.escapeJavaScript($input.body)`,
-            name: "$util.escapeJavaScript($input.path('projectId'))-$context.requestId",
-          }),
-        },
+    // Create a simple Lambda for starting the workflow
+    const startWorkflowLambda = new nodejs.NodejsFunction(this, 'StartWorkflowLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/start-workflow/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        CLONE_EXPLODE_STATE_MACHINE_ARN: cloneExplodeStateMachine.stateMachineArn,
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
       },
     });
+
+    cloneExplodeStateMachine.grantStartExecution(startWorkflowLambda);
 
     connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(registerWebhookLambda), {
       apiKeyRequired: true,
@@ -392,7 +389,7 @@ export class FlawlesstApiStack extends Stack {
 
     // Add a separate endpoint for starting the workflow
     const startWorkflowResource = api.root.addResource('start-workflow');
-    startWorkflowResource.addMethod('POST', startWorkflowIntegration, {
+    startWorkflowResource.addMethod('POST', new apigw.LambdaIntegration(startWorkflowLambda), {
       apiKeyRequired: true,
       operationName: 'StartWorkflow',
     });

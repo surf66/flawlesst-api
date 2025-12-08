@@ -194,12 +194,13 @@ components:
         startDate:
           type: string
           format: date-time
-        name:
-          type: string
-          description: Execution name
         input:
           type: object
           description: The input that was passed to the state machine
+        message:
+          type: string
+          description: Status message
+          example: Clone, explode, and analysis workflow started
 
     GitHubWebhookEvent:
       type: object
