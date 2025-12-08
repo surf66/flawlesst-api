@@ -346,9 +346,55 @@ export class FlawlesstApiStack extends Stack {
     analysisStateMachine.grantStartExecution(connectProjectLambda);
 
     const connectProjectResource = api.root.addResource('connect-project');
-    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
+    
+    // Create a new Lambda for just webhook registration
+    const registerWebhookLambda = new nodejs.NodejsFunction(this, 'RegisterWebhookLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/register-webhook/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        GITHUB_WEBHOOK_URL: process.env.FLAWLESST_GITHUB_WEBHOOK_URL ?? '',
+        GITHUB_WEBHOOK_SECRET_BASE: process.env.FLAWLESST_WEBHOOK_SECRET_BASE ?? '',
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    // Step Functions integration for starting the clone/explode workflow
+    const startWorkflowIntegration = new apigw.Integration({
+      integrationHttpMethod: 'POST',
+      type: apigw.IntegrationType.AWS_PROXY,
+      uri: `arn:aws:apigateway:${this.region}:states:action/StartExecution`,
+      options: {
+        integrationResponses: [
+          {
+            statusCode: '200',
+          },
+        ],
+        requestTemplates: {
+          'application/json': JSON.stringify({
+            stateMachineArn: cloneExplodeStateMachine.stateMachineArn,
+            input: `$util.escapeJavaScript($input.body)`,
+            name: "$util.escapeJavaScript($input.path('projectId'))-$context.requestId",
+          }),
+        },
+      },
+    });
+
+    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(registerWebhookLambda), {
       apiKeyRequired: true,
       operationName: 'ConnectProject',
+    });
+
+    // Add a separate endpoint for starting the workflow
+    const startWorkflowResource = api.root.addResource('start-workflow');
+    startWorkflowResource.addMethod('POST', startWorkflowIntegration, {
+      apiKeyRequired: true,
+      operationName: 'StartWorkflow',
     });
 
     // Public GitHub webhook endpoint (GitHub posts push events here)
