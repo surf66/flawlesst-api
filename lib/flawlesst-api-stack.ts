@@ -109,14 +109,14 @@ export class FlawlesstApiStack extends Stack {
     sourceBucket.grantReadWrite(analyzeFileLambda);
     analyzeFileLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
     
-    // Grant Bedrock permissions for file analysis
+    // Grant Bedrock permissions for AI analysis
     analyzeFileLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['bedrock:InvokeModel'],
-      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-instant-v1`]
+      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
     }));
-
-    // Create the aggregate-results Lambda function
+    
+    // Grant Bedrock permissions for AI summary generation
     const aggregateResultsLambda = new nodejs.NodejsFunction(this, 'AggregateResultsLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, '../src/lambdas/aggregate-results/index.ts'),
@@ -142,7 +142,7 @@ export class FlawlesstApiStack extends Stack {
     aggregateResultsLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['bedrock:InvokeModel'],
-      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-instant-v1`]
+      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
     }));
 
     // Create Map state for distributed file analysis
