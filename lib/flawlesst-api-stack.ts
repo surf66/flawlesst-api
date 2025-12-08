@@ -6,6 +6,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 
 export class FlawlesstApiStack extends Stack {
@@ -87,13 +88,90 @@ export class FlawlesstApiStack extends Stack {
       resultPath: '$.explodeResult',
     });
 
-    // Create the state machine with both tasks
+    // Create the analyze-file Lambda function
+    const analyzeFileLambda = new nodejs.NodejsFunction(this, 'AnalyzeFileLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/analyze-file/index.ts'),
+      handler: 'handler',
+      memorySize: 512,
+      timeout: Duration.minutes(2),
+      environment: {
+        SOURCE_BUCKET: sourceBucket.bucketName,
+        RESULTS_BUCKET: sourceBucket.bucketName,
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    sourceBucket.grantReadWrite(analyzeFileLambda);
+    analyzeFileLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
+
+    // Create the aggregate-results Lambda function
+    const aggregateResultsLambda = new nodejs.NodejsFunction(this, 'AggregateResultsLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/aggregate-results/index.ts'),
+      handler: 'handler',
+      memorySize: 1024,
+      timeout: Duration.minutes(10),
+      environment: {
+        RESULTS_BUCKET: sourceBucket.bucketName,
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    sourceBucket.grantReadWrite(aggregateResultsLambda);
+    aggregateResultsLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
+
+    // Create Map state for distributed file analysis
+    const mapState = new sfn.Map(this, 'AnalyzeFilesMap', {
+      inputPath: '$.explodeResult.Payload.filePaths',
+      resultPath: '$.mapResults',
+      maxConcurrency: 50, // Process up to 50 files in parallel
+    });
+
+    const analyzeTask = new tasks.LambdaInvoke(this, 'AnalyzeFileTask', {
+      lambdaFunction: analyzeFileLambda,
+      payload: sfn.TaskInput.fromObject({
+        fileKey: sfn.JsonPath.stringAt('$.userId + "/" + $.projectId + "/" + $'),
+        fileName: sfn.JsonPath.stringAt('$'),
+        userId: sfn.JsonPath.stringAt('$.userId'),
+        projectId: sfn.JsonPath.stringAt('$.projectId'),
+        jobExecutionId: sfn.JsonPath.stringAt('$$.Execution.Id'),
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    // Set up the map iterator
+    mapState.iterator(analyzeTask);
+
+    // Create the aggregation task
+    const aggregateTask = new tasks.LambdaInvoke(this, 'AggregateResultsTask', {
+      lambdaFunction: aggregateResultsLambda,
+      payload: sfn.TaskInput.fromObject({
+        userId: sfn.JsonPath.stringAt('$.userId'),
+        projectId: sfn.JsonPath.stringAt('$.projectId'),
+        jobExecutionId: sfn.JsonPath.stringAt('$$.Execution.Id'),
+        filePaths: sfn.JsonPath.stringAt('$.explodeResult.Payload.filePaths'),
+      }),
+      resultPath: '$.aggregateResult',
+    });
+
+    // Create the state machine with Map-Reduce workflow
     const definition = cloneTask
-      .next(explodeTask);
+      .next(explodeTask)
+      .next(mapState)
+      .next(aggregateTask);
 
     const stateMachine = new sfn.StateMachine(this, 'ConnectProjectStateMachine', {
       definition,
-      timeout: Duration.minutes(15), // Increased timeout for the entire workflow
+      timeout: Duration.minutes(30), // Increased timeout for Map-Reduce workflow
     });
 
     const startCloneLambda = new nodejs.NodejsFunction(this, 'StartCloneExecutionLambda', {
