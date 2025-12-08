@@ -72,7 +72,7 @@ Keep each bullet point under 100 characters and make them actionable for stakeho
 
 const callBedrockForSummary = async (prompt: string): Promise<{ summary: string[] }> => {
   const command = new InvokeModelCommand({
-    modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
+    modelId: 'anthropic.claude-instant-v1',
     contentType: 'application/json',
     accept: 'application/json',
     body: JSON.stringify({
