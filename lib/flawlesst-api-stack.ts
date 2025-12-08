@@ -173,7 +173,7 @@ export class FlawlesstApiStack extends Stack {
         userId: sfn.JsonPath.stringAt('$.userId'),
         projectId: sfn.JsonPath.stringAt('$.projectId'),
         jobExecutionId: sfn.JsonPath.stringAt('$$.Execution.Id'),
-        filePaths: sfn.JsonPath.stringAt('$.explodeResult.Payload.filePaths'),
+        filePaths: sfn.JsonPath.stringAt('$.filePaths'),
       }),
       resultPath: '$.aggregateResult',
     });

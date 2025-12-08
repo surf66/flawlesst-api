@@ -46,7 +46,7 @@ interface FileInfo {
   content: Buffer;
 }
 
-export const handler = async (event: any): Promise<{ filePaths: string[] }> => {
+export const handler = async (event: any): Promise<{ userId: string; projectId: string; filePaths: string[] }> => {
   try {
     const record = event.Records[0];
     const sourceKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
@@ -132,6 +132,8 @@ export const handler = async (event: any): Promise<{ filePaths: string[] }> => {
     );
     
     return {
+      userId,
+      projectId,
       filePaths
     };
     
