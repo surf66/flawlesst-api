@@ -139,7 +139,6 @@ export class FlawlesstApiStack extends Stack {
     const analyzeTask = new tasks.LambdaInvoke(this, 'AnalyzeFileTask', {
       lambdaFunction: analyzeFileLambda,
       payload: sfn.TaskInput.fromObject({
-        fileKey: sfn.JsonPath.stringAt('$.userId + "/" + $.projectId + "/" + $'),
         fileName: sfn.JsonPath.stringAt('$'),
         userId: sfn.JsonPath.stringAt('$.userId'),
         projectId: sfn.JsonPath.stringAt('$.projectId'),

@@ -13,7 +13,6 @@ This Lambda function analyzes individual code files for testability and automati
 
 ```typescript
 {
-  fileKey: string; // S3 key of the file to analyze
   fileName: string; // Name of the file
   userId: string; // User ID
   projectId: string; // Project ID

@@ -8,7 +8,6 @@ const SOURCE_BUCKET = process.env.SOURCE_BUCKET!;
 const RESULTS_BUCKET = process.env.RESULTS_BUCKET || SOURCE_BUCKET;
 
 interface AnalysisInput {
-  fileKey: string;
   fileName: string;
   userId: string;
   projectId: string;
@@ -82,17 +81,20 @@ const callBedrock = async (prompt: string): Promise<AnalysisResult> => {
 };
 
 export const handler = async (event: AnalysisInput): Promise<AnalysisResult> => {
+  // Construct the fileKey from the input parameters
+  const fileKey = `${event.userId}/${event.projectId}/${event.fileName}`;
+  
   try {
-    console.log(`Analyzing file: ${event.fileKey} for user ${event.userId}, project ${event.projectId}`);
+    console.log(`Analyzing file: ${fileKey} for user ${event.userId}, project ${event.projectId}`);
 
     // Get the file content from S3
     const { Body: fileStream } = await s3.send(new GetObjectCommand({
       Bucket: SOURCE_BUCKET,
-      Key: event.fileKey,
+      Key: fileKey,
     }));
 
     if (!fileStream) {
-      throw new Error(`Empty file stream received from S3 for key: ${event.fileKey}`);
+      throw new Error(`Empty file stream received from S3 for key: ${fileKey}`);
     }
 
     // Read file content
@@ -133,7 +135,7 @@ export const handler = async (event: AnalysisInput): Promise<AnalysisResult> => 
     return analysisResult;
 
   } catch (error) {
-    console.error(`Error analyzing file ${event.fileKey}:`, error);
+    console.error(`Error analyzing file ${fileKey}:`, error);
     
     // Return a default failed analysis result
     const failedResult: AnalysisResult = {
