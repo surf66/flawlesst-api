@@ -369,11 +369,6 @@ export class FlawlesstApiStack extends Stack {
 
     cloneExplodeStateMachine.grantStartExecution(startWorkflowLambda);
 
-    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
-      apiKeyRequired: true,
-      operationName: 'ConnectProject',
-    });
-
     // Keep the start-workflow endpoint as an alternative way to start the workflow
     const startWorkflowResource = api.root.addResource('start-workflow');
     startWorkflowResource.addMethod('POST', new apigw.LambdaIntegration(startWorkflowLambda), {
