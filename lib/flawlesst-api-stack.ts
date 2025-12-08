@@ -346,22 +346,9 @@ export class FlawlesstApiStack extends Stack {
     analysisStateMachine.grantStartExecution(connectProjectLambda);
 
     const connectProjectResource = api.root.addResource('connect-project');
-    
-    // Create a new Lambda for just webhook registration
-    const registerWebhookLambda = new nodejs.NodejsFunction(this, 'RegisterWebhookLambda', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      entry: path.join(__dirname, '../src/lambdas/register-webhook/index.ts'),
-      handler: 'handler',
-      memorySize: 256,
-      timeout: Duration.seconds(10),
-      environment: {
-        GITHUB_WEBHOOK_URL: process.env.FLAWLESST_GITHUB_WEBHOOK_URL ?? '',
-        GITHUB_WEBHOOK_SECRET_BASE: process.env.FLAWLESST_WEBHOOK_SECRET_BASE ?? '',
-      },
-      bundling: {
-        nodeModules: [],
-        forceDockerBundling: false,
-      },
+    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
+      apiKeyRequired: true,
+      operationName: 'ConnectProject',
     });
 
     // Create a simple Lambda for starting the workflow
@@ -382,12 +369,12 @@ export class FlawlesstApiStack extends Stack {
 
     cloneExplodeStateMachine.grantStartExecution(startWorkflowLambda);
 
-    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(registerWebhookLambda), {
+    connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
       apiKeyRequired: true,
       operationName: 'ConnectProject',
     });
 
-    // Add a separate endpoint for starting the workflow
+    // Keep the start-workflow endpoint as an alternative way to start the workflow
     const startWorkflowResource = api.root.addResource('start-workflow');
     startWorkflowResource.addMethod('POST', new apigw.LambdaIntegration(startWorkflowLambda), {
       apiKeyRequired: true,

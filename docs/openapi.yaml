@@ -140,11 +140,18 @@ components:
           type: string
         repo:
           type: string
-        webhookUrl:
+        branch:
           type: string
-        secret:
+        executionArn:
           type: string
-          description: Partial webhook secret (truncated for security)
+          description: Step Functions execution ARN for the started workflow
+        startDate:
+          type: string
+          format: date-time
+          description: When the workflow started
+        executionError:
+          type: string
+          description: Error message if workflow failed to start
 
     StartWorkflowRequest:
       type: object
@@ -309,12 +316,11 @@ paths:
 
   /connect-project:
     post:
-      summary: Register GitHub webhook for a project
+      summary: Register GitHub webhook and start workflow
       description: |
         Registers a push webhook on the specified GitHub repository so that
-        Flawlesst is notified on future pushes. This endpoint only handles
-        webhook registration. Use the /start-workflow endpoint to start the
-        clone and analysis process.
+        Flawlesst is notified on future pushes, and automatically starts the
+        clone/explode/analysis workflow for the initial repository analysis.
       operationId: connectProject
       security:
         - ApiKeyAuth: []
@@ -326,7 +332,7 @@ paths:
               $ref: "#/components/schemas/ConnectProjectRequest"
       responses:
         "201":
-          description: Webhook successfully registered
+          description: Webhook registered and workflow started
           content:
             application/json:
               schema:

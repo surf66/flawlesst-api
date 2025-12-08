@@ -6,7 +6,8 @@ const GITHUB_API_BASE = 'api.github.com';
 
 const webhookUrl = process.env.GITHUB_WEBHOOK_URL as string | undefined;
 const webhookSecretBase = process.env.GITHUB_WEBHOOK_SECRET_BASE as string | undefined;
-const stateMachineArn = process.env.STATE_MACHINE_ARN as string | undefined;
+const cloneExplodeStateMachineArn = process.env.CLONE_EXPLODE_STATE_MACHINE_ARN as string | undefined;
+const analysisStateMachineArn = process.env.ANALYSIS_STATE_MACHINE_ARN as string | undefined;
 const sourceBucket = process.env.SOURCE_BUCKET as string | undefined;
 
 const sfn = new SFNClient({});
@@ -143,11 +144,22 @@ export const handler = async (
     let startDate: Date | undefined;
     let executionError: string | undefined;
 
-    if (stateMachineArn && sourceBucket) {
+    if (cloneExplodeStateMachineArn && sourceBucket) {
       try {
-        const input = JSON.stringify({ owner, repo, branch, githubToken, sourceBucket, userId, projectId });
+        const input = JSON.stringify({ 
+          owner, 
+          repo, 
+          branch, 
+          githubToken, 
+          sourceBucket, 
+          userId, 
+          projectId,
+          autoStartAnalysis: true,
+          analysisStateMachineArn
+        });
         const command = new StartExecutionCommand({
-          stateMachineArn,
+          stateMachineArn: cloneExplodeStateMachineArn,
+          name: `connect-${projectId}-${Date.now()}`,
           input,
         });
         const result = await sfn.send(command);
