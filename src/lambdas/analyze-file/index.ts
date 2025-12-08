@@ -1,8 +1,8 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
-const s3 = new S3Client({ region: process.env.AWS_REGION });
-const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+const s3 = new S3Client({ region: process.env.DEPLOYMENT_REGION });
+const bedrock = new BedrockRuntimeClient({ region: process.env.DEPLOYMENT_REGION });
 
 const SOURCE_BUCKET = process.env.SOURCE_BUCKET!;
 const RESULTS_BUCKET = process.env.RESULTS_BUCKET || SOURCE_BUCKET;

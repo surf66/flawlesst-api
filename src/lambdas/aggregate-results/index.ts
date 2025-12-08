@@ -2,8 +2,8 @@ import { S3Client, GetObjectCommand, ListObjectsV2Command, PutObjectCommand } fr
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const s3 = new S3Client({ region: process.env.AWS_REGION });
-const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+const s3 = new S3Client({ region: process.env.DEPLOYMENT_REGION });
+const bedrock = new BedrockRuntimeClient({ region: process.env.DEPLOYMENT_REGION });
 
 const RESULTS_BUCKET = process.env.RESULTS_BUCKET!;
 const SUPABASE_URL = process.env.SUPABASE_URL!;

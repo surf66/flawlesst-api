@@ -3,13 +3,14 @@ import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 
 const sfn = new SFNClient({});
 
-const stateMachineArn = process.env.STATE_MACHINE_ARN as string;
+const cloneExplodeStateMachineArn = process.env.CLONE_EXPLODE_STATE_MACHINE_ARN as string;
+const analysisStateMachineArn = process.env.ANALYSIS_STATE_MACHINE_ARN as string;
 const sourceBucket = process.env.SOURCE_BUCKET as string;
 
 export const handler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
-  if (!stateMachineArn || !sourceBucket) {
+  if (!cloneExplodeStateMachineArn || !sourceBucket) {
     return {
       statusCode: 500,
       body: JSON.stringify({ message: 'State machine or bucket not configured' }),
@@ -33,19 +34,30 @@ export const handler = async (
     };
   }
 
-  const { owner, repo, branch = 'main', githubToken } = payload;
+  const { owner, repo, branch = 'main', githubToken, userId, projectId, autoStartAnalysis = true } = payload;
 
-  if (!owner || !repo) {
+  if (!owner || !repo || !userId || !projectId) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ message: 'owner and repo are required' }),
+      body: JSON.stringify({ message: 'owner, repo, userId, and projectId are required' }),
     };
   }
 
-  const input = JSON.stringify({ owner, repo, branch, githubToken, sourceBucket });
+  const input = JSON.stringify({ 
+    owner, 
+    repo, 
+    branch, 
+    githubToken, 
+    sourceBucket,
+    userId,
+    projectId,
+    autoStartAnalysis,
+    analysisStateMachineArn: autoStartAnalysis ? analysisStateMachineArn : undefined
+  });
 
   const command = new StartExecutionCommand({
-    stateMachineArn,
+    stateMachineArn: cloneExplodeStateMachineArn,
+    name: `clone-explode-${projectId}-${Date.now()}`,
     input,
   });
 
@@ -59,6 +71,7 @@ export const handler = async (
     body: JSON.stringify({
       executionArn: result.executionArn,
       startDate: result.startDate,
+      message: autoStartAnalysis ? 'Clone and analysis started' : 'Clone started',
     }),
   };
 };

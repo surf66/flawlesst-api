@@ -98,7 +98,7 @@ export class FlawlesstApiStack extends Stack {
       environment: {
         SOURCE_BUCKET: sourceBucket.bucketName,
         RESULTS_BUCKET: sourceBucket.bucketName,
-        AWS_REGION: this.region,
+        DEPLOYMENT_REGION: this.region,
       },
       bundling: {
         nodeModules: [],
@@ -127,7 +127,7 @@ export class FlawlesstApiStack extends Stack {
         RESULTS_BUCKET: sourceBucket.bucketName,
         SUPABASE_URL: process.env.SUPABASE_URL ?? '',
         SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
-        AWS_REGION: this.region,
+        DEPLOYMENT_REGION: this.region,
       },
       bundling: {
         nodeModules: [],
@@ -178,30 +178,87 @@ export class FlawlesstApiStack extends Stack {
       resultPath: '$.aggregateResult',
     });
 
-    // Create the state machine with Map-Reduce workflow
-    const definition = cloneTask
-      .next(explodeTask)
-      .next(mapState)
-      .next(aggregateTask);
+    // Clone/Explode State Machine Definition (will be defined after tasks are created)
+    let cloneExplodeDefinition: sfn.Chain;
+    let cloneExplodeStateMachine: sfn.StateMachine;
 
-    const stateMachine = new sfn.StateMachine(this, 'ConnectProjectStateMachine', {
-      definition,
-      timeout: Duration.minutes(30), // Increased timeout for Map-Reduce workflow
+    // Analysis State Machine Definition
+    const analysisDefinition = mapState.next(aggregateTask);
+
+    const analysisStateMachine = new sfn.StateMachine(this, 'AnalysisStateMachine', {
+      definition: analysisDefinition,
+      timeout: Duration.minutes(30),
     });
 
-    const startCloneLambda = new nodejs.NodejsFunction(this, 'StartCloneExecutionLambda', {
+    // Lambda to start analysis after explode completes
+    const startAnalysisAfterExplodeLambda = new nodejs.NodejsFunction(this, 'StartAnalysisAfterExplodeLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/start-analysis-after-explode/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        ANALYSIS_STATE_MACHINE_ARN: analysisStateMachine.stateMachineArn,
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    analysisStateMachine.grantStartExecution(startAnalysisAfterExplodeLambda);
+
+    const startAnalysisAfterExplodeTask = new tasks.LambdaInvoke(this, 'StartAnalysisAfterExplodeTask', {
+      lambdaFunction: startAnalysisAfterExplodeLambda,
+      payload: sfn.TaskInput.fromObject({
+        'userId.$': '$.userId',
+        'projectId.$': '$.projectId',
+        'autoStartAnalysis.$': '$.autoStartAnalysis',
+        'analysisStateMachineArn.$': '$.analysisStateMachineArn',
+        'explodeResult.$': '$.explodeResult',
+      }),
+      resultPath: '$.analysisStartResult',
+    });
+
+    // Now assign the complete definition and create the state machine
+    cloneExplodeDefinition = cloneTask.next(explodeTask).next(startAnalysisAfterExplodeTask);
+    
+    cloneExplodeStateMachine = new sfn.StateMachine(this, 'CloneExplodeStateMachine', {
+      definition: cloneExplodeDefinition,
+      timeout: Duration.minutes(10),
+    });
+
+    const startCloneExecutionLambda = new nodejs.NodejsFunction(this, 'StartCloneExecutionLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, '../src/lambdas/start-clone-execution/index.ts'),
       handler: 'handler',
       memorySize: 256,
       timeout: Duration.seconds(10),
       environment: {
-        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        STATE_MACHINE_ARN: cloneExplodeStateMachine.stateMachineArn,
+        ANALYSIS_STATE_MACHINE_ARN: analysisStateMachine.stateMachineArn,
         SOURCE_BUCKET: sourceBucket.bucketName,
       },
     });
 
-    stateMachine.grantStartExecution(startCloneLambda);
+    cloneExplodeStateMachine.grantStartExecution(startCloneExecutionLambda);
+    analysisStateMachine.grantStartExecution(startCloneExecutionLambda);
+
+    // Lambda to start analysis step function via API
+    const startAnalysisLambda = new nodejs.NodejsFunction(this, 'StartAnalysisLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/start-analysis/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        ANALYSIS_STATE_MACHINE_ARN: analysisStateMachine.stateMachineArn,
+        SOURCE_BUCKET: sourceBucket.bucketName,
+      },
+    });
+
+    analysisStateMachine.grantStartExecution(startAnalysisLambda);
+    sourceBucket.grantRead(startAnalysisLambda);
 
     // Create REST API
     const api = new apigw.RestApi(this, 'FlawlesstApi', {
@@ -254,9 +311,15 @@ export class FlawlesstApiStack extends Stack {
     });
 
     const cloneRepoResource = api.root.addResource('clone-repo');
-    cloneRepoResource.addMethod('POST', new apigw.LambdaIntegration(startCloneLambda), {
+    cloneRepoResource.addMethod('POST', new apigw.LambdaIntegration(startCloneExecutionLambda), {
       apiKeyRequired: true,
       operationName: 'StartCloneRepo',
+    });
+
+    const analysisResource = api.root.addResource('analysis');
+    analysisResource.addMethod('POST', new apigw.LambdaIntegration(startAnalysisLambda), {
+      apiKeyRequired: true,
+      operationName: 'StartAnalysis',
     });
 
     // Connect project endpoint: registers a GitHub webhook for a repo
@@ -273,12 +336,14 @@ export class FlawlesstApiStack extends Stack {
         // https://your-api-domain/prod/webhooks/github
         GITHUB_WEBHOOK_URL: process.env.FLAWLESST_GITHUB_WEBHOOK_URL ?? '',
         GITHUB_WEBHOOK_SECRET_BASE: process.env.FLAWLESST_WEBHOOK_SECRET_BASE ?? '',
-        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        CLONE_EXPLODE_STATE_MACHINE_ARN: cloneExplodeStateMachine.stateMachineArn,
+        ANALYSIS_STATE_MACHINE_ARN: analysisStateMachine.stateMachineArn,
         SOURCE_BUCKET: sourceBucket.bucketName,
       },
     });
 
-    stateMachine.grantStartExecution(connectProjectLambda);
+    cloneExplodeStateMachine.grantStartExecution(connectProjectLambda);
+    analysisStateMachine.grantStartExecution(connectProjectLambda);
 
     const connectProjectResource = api.root.addResource('connect-project');
     connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
