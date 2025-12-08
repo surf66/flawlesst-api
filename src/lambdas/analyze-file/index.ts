@@ -49,7 +49,7 @@ Scoring Criteria:
 
 const callBedrock = async (prompt: string): Promise<AnalysisResult> => {
   const command = new InvokeModelCommand({
-    modelId: 'anthropic.claude-instant-v1',
+    modelId: `arn:aws:bedrock:${process.env.DEPLOYMENT_REGION}::foundation-model/anthropic.claude-instant-v1`,
     contentType: 'application/json',
     accept: 'application/json',
     body: JSON.stringify({
