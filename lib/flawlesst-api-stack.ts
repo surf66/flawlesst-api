@@ -147,7 +147,7 @@ export class FlawlesstApiStack extends Stack {
 
     // Create Map state for distributed file analysis
     const mapState = new sfn.Map(this, 'AnalyzeFilesMap', {
-      inputPath: '$.explodeResult.Payload.filePaths',
+      inputPath: '$.filePaths',
       resultPath: '$.mapResults',
       maxConcurrency: 50, // Process up to 50 files in parallel
     });
