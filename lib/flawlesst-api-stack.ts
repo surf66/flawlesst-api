@@ -128,6 +128,13 @@ export class FlawlesstApiStack extends Stack {
 
     sourceBucket.grantReadWrite(aggregateResultsLambda);
     aggregateResultsLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
+    
+    // Grant Bedrock permissions for AI summary generation
+    aggregateResultsLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['bedrock:InvokeModel'],
+      resources: ['arn:aws:bedrock:eu-west-2::foundation-model/anthropic.claude-3-haiku-20240307-v1:0']
+    }));
 
     // Create Map state for distributed file analysis
     const mapState = new sfn.Map(this, 'AnalyzeFilesMap', {
