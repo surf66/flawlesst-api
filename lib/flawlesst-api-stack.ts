@@ -112,7 +112,12 @@ export class FlawlesstApiStack extends Stack {
     // Grant Bedrock permissions for AI analysis
     analyzeFileLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['bedrock:InvokeModel'],
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+        'aws-marketplace:Subscribe',
+        'aws-marketplace:ViewSubscriptions'
+      ],
       resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
     }));
     
@@ -141,7 +146,12 @@ export class FlawlesstApiStack extends Stack {
     // Grant Bedrock permissions for AI summary generation
     aggregateResultsLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['bedrock:InvokeModel'],
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+        'aws-marketplace:Subscribe',
+        'aws-marketplace:ViewSubscriptions'
+      ],
       resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
     }));
 
