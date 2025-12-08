@@ -1,10 +1,15 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import * as https from 'https';
+import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 
 const GITHUB_API_BASE = 'api.github.com';
 
 const webhookUrl = process.env.GITHUB_WEBHOOK_URL as string | undefined;
 const webhookSecretBase = process.env.GITHUB_WEBHOOK_SECRET_BASE as string | undefined;
+const stateMachineArn = process.env.STATE_MACHINE_ARN as string | undefined;
+const sourceBucket = process.env.SOURCE_BUCKET as string | undefined;
+
+const sfn = new SFNClient({});
 
 const createRepoSecret = (owner: string, repo: string): string => {
   if (!webhookSecretBase) {
@@ -97,7 +102,7 @@ export const handler = async (
     };
   }
 
-  const { owner, repo, githubToken } = payload;
+  const { owner, repo, githubToken, branch = 'main' } = payload;
 
   if (!owner || !repo || !githubToken) {
     return {
@@ -134,6 +139,29 @@ export const handler = async (
       };
     }
 
+    let executionArn: string | undefined;
+    let startDate: Date | undefined;
+    let executionError: string | undefined;
+
+    if (stateMachineArn && sourceBucket) {
+      try {
+        const input = JSON.stringify({ owner, repo, branch, githubToken, sourceBucket });
+        const command = new StartExecutionCommand({
+          stateMachineArn,
+          input,
+        });
+        const result = await sfn.send(command);
+        executionArn = result.executionArn;
+        if (result.startDate) {
+          startDate = result.startDate;
+        }
+      } catch (err: any) {
+        executionError = err?.message ?? 'Failed to start clone/explode workflow';
+      }
+    } else {
+      executionError = 'State machine or source bucket not configured';
+    }
+
     return {
       statusCode: 201,
       headers: {
@@ -143,6 +171,10 @@ export const handler = async (
         message: 'Webhook registered',
         owner,
         repo,
+        branch,
+        executionArn,
+        startDate,
+        executionError,
       }),
     };
   } catch (error: any) {

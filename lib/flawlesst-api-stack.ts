@@ -176,8 +176,12 @@ export class FlawlesstApiStack extends Stack {
         // https://your-api-domain/prod/webhooks/github
         GITHUB_WEBHOOK_URL: process.env.FLAWLESST_GITHUB_WEBHOOK_URL ?? '',
         GITHUB_WEBHOOK_SECRET_BASE: process.env.FLAWLESST_WEBHOOK_SECRET_BASE ?? '',
+        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+        SOURCE_BUCKET: sourceBucket.bucketName,
       },
     });
+
+    stateMachine.grantStartExecution(connectProjectLambda);
 
     const connectProjectResource = api.root.addResource('connect-project');
     connectProjectResource.addMethod('POST', new apigw.LambdaIntegration(connectProjectLambda), {
