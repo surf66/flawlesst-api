@@ -44,6 +44,6 @@ jobs:
         env:
           FLAWLESST_GITHUB_WEBHOOK_URL: ${{ secrets.FLAWLESST_GITHUB_WEBHOOK_URL }}
           FLAWLESST_WEBHOOK_SECRET_BASE: ${{ secrets.FLAWLESST_WEBHOOK_SECRET_BASE }}
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: npm run cdk:deploy
