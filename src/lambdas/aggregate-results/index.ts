@@ -155,6 +155,14 @@ export const handler = async (event: AggregatorInput): Promise<ProjectReport> =>
   try {
     console.log(`Aggregating results for user ${event.userId}, project ${event.projectId}, execution ${event.jobExecutionId}`);
 
+    // Debug: Check if we can connect and what role we have
+    const { data: authData, error: authError } = await supabase.rpc('get_current_role');
+    if (authError) {
+      console.log('Auth check error:', authError);
+    } else {
+      console.log('Current role detected:', authData);
+    }
+
     // List all analysis result files
     const resultsPrefix = `${event.userId}/${event.projectId}/analysis-results/${event.jobExecutionId}/`;
     const listCommand = new ListObjectsV2Command({
@@ -218,6 +226,40 @@ export const handler = async (event: AggregatorInput): Promise<ProjectReport> =>
     const summaryText = aiSummary.summary.join('\n');
 
     // Create project report record
+    console.log(`Attempting to create report for project_id: ${event.projectId}`);
+
+    // Check if project exists first
+    const { data: projectCheck, error: projectCheckError } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('id', event.projectId)
+      .single();
+
+    if (projectCheckError || !projectCheck) {
+      console.log('Project check error:', projectCheckError);
+      console.log('Project does not exist, creating it...');
+
+      // Create the project if it doesn't exist
+      const { data: newProject, error: createProjectError } = await supabase
+        .from('projects')
+        .insert({
+          id: event.projectId,
+          user_id: event.userId,
+          name: `Project ${event.projectId}`,
+          description: 'Auto-created by analysis workflow'
+        })
+        .select()
+        .single();
+
+      if (createProjectError) {
+        throw new Error(`Failed to create project: ${createProjectError.message}`);
+      }
+
+      console.log('Created project:', newProject);
+    } else {
+      console.log('Found existing project:', projectCheck);
+    }
+
     const reportData = {
       project_id: event.projectId,
       overall_score: overallScore,
