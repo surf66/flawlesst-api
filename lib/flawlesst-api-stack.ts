@@ -108,7 +108,7 @@ export class FlawlesstApiStack extends Stack {
 
     sourceBucket.grantReadWrite(analyzeFileLambda);
     analyzeFileLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
-    
+
     // Grant Bedrock permissions for AI analysis
     analyzeFileLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -116,11 +116,17 @@ export class FlawlesstApiStack extends Stack {
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
         'aws-marketplace:Subscribe',
-        'aws-marketplace:ViewSubscriptions'
+        'aws-marketplace:ViewSubscriptions',
+        'aws-marketplace:ListSubscriptions',
+        'aws-marketplace:Unsubscribe',
+        'aws-marketplace:DescribeSubscription'
       ],
-      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
+      resources: [
+        `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`,
+        '*'
+      ]
     }));
-    
+
     // Grant Bedrock permissions for AI summary generation
     const aggregateResultsLambda = new nodejs.NodejsFunction(this, 'AggregateResultsLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -142,7 +148,7 @@ export class FlawlesstApiStack extends Stack {
 
     sourceBucket.grantReadWrite(aggregateResultsLambda);
     aggregateResultsLambda.grantInvoke(new iam.ServicePrincipal('states.amazonaws.com'));
-    
+
     // Grant Bedrock permissions for AI summary generation
     aggregateResultsLambda.addToRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
@@ -150,9 +156,15 @@ export class FlawlesstApiStack extends Stack {
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
         'aws-marketplace:Subscribe',
-        'aws-marketplace:ViewSubscriptions'
+        'aws-marketplace:ViewSubscriptions',
+        'aws-marketplace:ListSubscriptions',
+        'aws-marketplace:Unsubscribe',
+        'aws-marketplace:DescribeSubscription'
       ],
-      resources: [`arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`]
+      resources: [
+        `arn:aws:bedrock:${this.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0`,
+        '*'
+      ]
     }));
 
     // Create Map state for distributed file analysis
@@ -232,7 +244,7 @@ export class FlawlesstApiStack extends Stack {
 
     // Now assign the complete definition and create the state machine
     cloneExplodeDefinition = cloneTask.next(explodeTask).next(startAnalysisAfterExplodeTask);
-    
+
     cloneExplodeStateMachine = new sfn.StateMachine(this, 'CloneExplodeStateMachine', {
       definition: cloneExplodeDefinition,
       timeout: Duration.minutes(10),

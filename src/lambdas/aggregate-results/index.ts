@@ -47,7 +47,7 @@ interface FileAnalysisRecord {
 
 const generateSummaryPrompt = (observations: string[], scores: number[]): string => {
   const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-  
+
   return `You are a Senior SDET providing an executive summary of code quality analysis.
 
 Project Analysis Results:
@@ -71,39 +71,87 @@ Keep each bullet point under 100 characters and make them actionable for stakeho
 };
 
 const callBedrockForSummary = async (prompt: string): Promise<{ summary: string[] }> => {
-  const command = new InvokeModelCommand({
-    modelId: `anthropic.claude-3-haiku-20240307-v1:0`,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify({
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    })
-  });
-
-  const response = await bedrock.send(command);
-  const responseBody = new TextDecoder().decode(response.body);
-  const parsed = JSON.parse(responseBody);
-  
-  const content = parsed.content[0]?.text || '{"summary": ["Analysis completed"]}';
-  
   try {
-    return JSON.parse(content);
+    const command = new InvokeModelCommand({
+      modelId: `anthropic.claude-3-haiku-20240307-v1:0`,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify({
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    const response = await bedrock.send(command);
+    const responseBody = new TextDecoder().decode(response.body);
+    const parsed = JSON.parse(responseBody);
+
+    const content = parsed.content[0]?.text || '{"summary": ["Analysis completed"]}';
+
+    try {
+      return JSON.parse(content);
+    } catch (error) {
+      console.error('Failed to parse AI summary response:', content);
+      return { summary: ['Analysis completed with mixed results'] };
+    }
   } catch (error) {
-    console.error('Failed to parse AI summary response:', content);
-    return { summary: ['Analysis completed with mixed results'] };
+    console.error('Bedrock API call failed:', error);
+
+    // Check if it's a permissions/access issue
+    if (error instanceof Error && (
+      error.message.includes('AccessDeniedException') ||
+      error.message.includes('aws-marketplace') ||
+      error.message.includes('not authorized')
+    )) {
+      console.warn('Bedrock access denied - using fallback summary generation');
+      return generateFallbackSummary(prompt);
+    }
+
+    // For other errors, also use fallback
+    console.warn('Bedrock error occurred - using fallback summary generation');
+    return generateFallbackSummary(prompt);
   }
+};
+
+const generateFallbackSummary = (prompt: string): { summary: string[] } => {
+  // Extract basic metrics from the prompt for a simple fallback summary
+  const avgScoreMatch = prompt.match(/Average automation score: ([\d.]+)/);
+  const totalFilesMatch = prompt.match(/Total files analyzed: (\d+)/);
+
+  const avgScore = avgScoreMatch ? parseFloat(avgScoreMatch[1]) : 5.0;
+  const totalFiles = totalFilesMatch ? parseInt(totalFilesMatch[1]) : 0;
+
+  let summary: string[] = [];
+
+  if (avgScore >= 8) {
+    summary.push('Strong test automation maturity across the codebase');
+  } else if (avgScore >= 6) {
+    summary.push('Moderate test automation coverage with room for improvement');
+  } else {
+    summary.push('Test automation needs significant enhancement');
+  }
+
+  summary.push(`Analyzed ${totalFiles} files with average score of ${avgScore.toFixed(1)}/10`);
+
+  if (avgScore < 7) {
+    summary.push('Focus on increasing test coverage and automation');
+    summary.push('Consider implementing test-driven development practices');
+  } else {
+    summary.push('Maintain current testing standards and optimize existing tests');
+  }
+
+  return { summary };
 };
 
 export const handler = async (event: AggregatorInput): Promise<ProjectReport> => {
   const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  
+
   try {
     console.log(`Aggregating results for user ${event.userId}, project ${event.projectId}, execution ${event.jobExecutionId}`);
 
@@ -142,7 +190,7 @@ export const handler = async (event: AggregatorInput): Promise<ProjectReport> =>
         const content = await new TextDecoder().decode(
           Buffer.from(await fileStream.transformToByteArray())
         );
-        
+
         const analysis: FileAnalysis = JSON.parse(content);
         analyses.push(analysis);
         allObservations.push(...analysis.observations);
@@ -241,7 +289,7 @@ export const handler = async (event: AggregatorInput): Promise<ProjectReport> =>
 
   } catch (error) {
     console.error('Error in aggregate-results:', error);
-    
+
     // Create a failure report if possible
     try {
       const failureReport = {
