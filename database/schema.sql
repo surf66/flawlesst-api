@@ -84,7 +84,11 @@ END $$;
 -- RLS Policies (these would need to be adapted based on your auth system)
 -- Drop policies if they exist, then recreate them
 DROP POLICY IF EXISTS "Users can view reports for their projects" ON project_reports;
+DROP POLICY IF EXISTS "Users can insert reports for their projects" ON project_reports;
+DROP POLICY IF EXISTS "Service key can bypass RLS for project_reports" ON project_reports;
 DROP POLICY IF EXISTS "Users can view file analysis for their project reports" ON file_analysis;
+DROP POLICY IF EXISTS "Users can insert file analysis for their project reports" ON file_analysis;
+DROP POLICY IF EXISTS "Service key can bypass RLS for file_analysis" ON file_analysis;
 
 -- Example policies - adjust based on your actual user/project relationship
 -- NOTE: These policies assume you have a user_id column in projects table
@@ -100,6 +104,19 @@ CREATE POLICY "Users can view reports for their projects" ON project_reports
         )
     );
 
+CREATE POLICY "Users can insert reports for their projects" ON project_reports
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM projects 
+            WHERE id = project_reports.project_id 
+            AND user_id = auth.uid()
+        )
+    );
+
+-- Allow service key to bypass RLS for insertions (for Lambda functions)
+CREATE POLICY "Service key can bypass RLS for project_reports" ON project_reports
+    FOR ALL USING (auth.role() = 'service_role');
+
 CREATE POLICY "Users can view file analysis for their project reports" ON file_analysis
     FOR SELECT USING (
         EXISTS (
@@ -109,6 +126,20 @@ CREATE POLICY "Users can view file analysis for their project reports" ON file_a
             AND p.user_id = auth.uid()
         )
     );
+
+CREATE POLICY "Users can insert file analysis for their project reports" ON file_analysis
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM project_reports pr
+            JOIN projects p ON p.id = pr.project_id
+            WHERE pr.id = file_analysis.report_id 
+            AND p.user_id = auth.uid()
+        )
+    );
+
+-- Allow service key to bypass RLS for insertions (for Lambda functions)
+CREATE POLICY "Service key can bypass RLS for file_analysis" ON file_analysis
+    FOR ALL USING (auth.role() = 'service_role');
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

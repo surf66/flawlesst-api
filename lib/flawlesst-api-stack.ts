@@ -64,6 +64,7 @@ export class FlawlesstApiStack extends Stack {
       bundling: {
         nodeModules: [],
         forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-bedrock-runtime', '@supabase/supabase-js'],
       },
     });
 
@@ -103,6 +104,7 @@ export class FlawlesstApiStack extends Stack {
       bundling: {
         nodeModules: [],
         forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-bedrock-runtime', '@supabase/supabase-js'],
       },
     });
 
@@ -143,6 +145,7 @@ export class FlawlesstApiStack extends Stack {
       bundling: {
         nodeModules: [],
         forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-bedrock-runtime', '@supabase/supabase-js'],
       },
     });
 
@@ -225,6 +228,7 @@ export class FlawlesstApiStack extends Stack {
       bundling: {
         nodeModules: [],
         forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-bedrock-runtime', '@supabase/supabase-js'],
       },
     });
 
@@ -386,6 +390,7 @@ export class FlawlesstApiStack extends Stack {
       bundling: {
         nodeModules: [],
         forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-bedrock-runtime', '@supabase/supabase-js'],
       },
     });
 
