@@ -247,6 +247,94 @@ components:
                 items:
                   type: string
 
+    ProjectSummary:
+      type: object
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the project
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        project_name:
+          type: string
+          description: Human-readable project name
+          example: "Flawlesst API"
+        report_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the analysis report
+          example: "987e6543-e21b-32d1-b456-426614174999"
+        overall_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall project score (0-100)
+          example: 85
+        total_files:
+          type: integer
+          minimum: 0
+          description: Total number of files analyzed
+          example: 150
+        files_with_tests:
+          type: integer
+          minimum: 0
+          description: Number of files that have tests
+          example: 75
+        test_coverage_percentage:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Percentage of files with test coverage
+          example: 50.0
+        average_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+          description: Average score across all files (0-10)
+          example: 8.5
+        analysis_date:
+          type: string
+          format: date-time
+          description: When the analysis was performed
+          example: "2024-01-15T10:30:00Z"
+        analyzed_files_count:
+          type: integer
+          minimum: 0
+          description: Count of files that were analyzed
+          example: 150
+        avg_file_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+          description: Average score per file
+          example: 8.5
+
+    SingleProjectResponse:
+      type: object
+      properties:
+        project_summary:
+          $ref: "#/components/schemas/ProjectSummary"
+        total_reports:
+          type: integer
+          minimum: 1
+          description: Number of reports returned (always 1 for single project)
+          example: 1
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type/category
+          example: "No project summaries found"
+        message:
+          type: string
+          description: Detailed error message
+          example: "No analysis reports found for user 12345678-1234-1234-1234-123456789012"
+
 paths:
   /health:
     get:
@@ -401,3 +489,72 @@ paths:
           description: Signature verification failed
         "500":
           description: Internal error
+
+  /project-analysis-summary/{projectId}:
+    get:
+      summary: Get project analysis summary
+      description: |
+        Retrieves the most recent analysis summary for a specific project.
+        Returns detailed metrics for the requested project only.
+      operationId: getProjectAnalysisSummary
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: Specific project ID to retrieve summary for
+          schema:
+            type: string
+            format: uuid
+          example: "87654321-4321-4321-4321-210987654321"
+        - name: userId
+          in: query
+          required: true
+          description: User ID to verify ownership of the project
+          schema:
+            type: string
+            format: uuid
+          example: "12345678-1234-1234-1234-123456789012"
+      responses:
+        "200":
+          description: Project summary retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SingleProjectResponse"
+        "400":
+          description: Missing required parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingUserId:
+                  summary: Missing userId parameter
+                  value:
+                    error: "Missing required parameter: userId"
+                    message: "userId must be provided as a query parameter"
+                missingProjectId:
+                  summary: Missing projectId parameter
+                  value:
+                    error: "Missing required parameter: projectId"
+                    message: "projectId must be provided as a path parameter"
+        "404":
+          description: Project analysis summary not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                noProject:
+                  summary: No specific project found
+                  value:
+                    error: "Project analysis summary not found"
+                    message: "No analysis reports found for project 87654321-4321-4321-4321-210987654321 and user 12345678-1234-1234-1234-123456789012"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

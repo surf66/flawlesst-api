@@ -422,6 +422,36 @@ export class FlawlesstApiStack extends Stack {
       operationName: 'GitHubWebhook',
     });
 
+    // Project analysis summary endpoint
+    const projectAnalysisSummaryLambda = new nodejs.NodejsFunction(this, 'ProjectAnalysisSummaryLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/project-analysis-summary/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    const projectAnalysisSummaryResource = api.root.addResource('project-analysis-summary');
+    const projectResource = projectAnalysisSummaryResource.addResource('{projectId}');
+    projectResource.addMethod('GET', new apigw.LambdaIntegration(projectAnalysisSummaryLambda), {
+      apiKeyRequired: true,
+      operationName: 'GetProjectAnalysisSummary',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
     // Output the API URL and API key information
     new CfnOutput(this, 'ApiUrl', {
       value: api.url || 'Unknown',
