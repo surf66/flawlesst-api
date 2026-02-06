@@ -1,0 +1,9 @@
+{
+  "name": "get-user-projects",
+  "version": "1.0.0",
+  "description": "Lambda function to get all projects for a user",
+  "main": "index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}

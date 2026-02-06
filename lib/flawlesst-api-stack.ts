@@ -452,6 +452,35 @@ export class FlawlesstApiStack extends Stack {
       }]
     });
 
+    // Get user projects endpoint
+    const getUserProjectsLambda = new nodejs.NodejsFunction(this, 'GetUserProjectsLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/get-user-projects/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: [],
+        forceDockerBundling: false,
+      },
+    });
+
+    const getUserProjectsResource = api.root.addResource('get-user-projects');
+    getUserProjectsResource.addMethod('GET', new apigw.LambdaIntegration(getUserProjectsLambda), {
+      apiKeyRequired: true,
+      operationName: 'GetUserProjects',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
     // Output the API URL and API key information
     new CfnOutput(this, 'ApiUrl', {
       value: api.url || 'Unknown',
