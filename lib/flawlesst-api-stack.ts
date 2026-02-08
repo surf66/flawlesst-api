@@ -80,7 +80,7 @@ export class FlawlesstApiStack extends Stack {
     });
 
     // Add container to task definition
-    const scannerContainer = taskDefinition.addContainer('accessibility-scanner', {
+    taskDefinition.addContainer('accessibility-scanner', {
       image: ecs.ContainerImage.fromEcrRepository(scannerRepository, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'accessibility-scanner' }),
       environment: {
