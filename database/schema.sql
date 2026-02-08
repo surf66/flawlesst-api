@@ -217,6 +217,7 @@ CREATE TABLE IF NOT EXISTS accessibility_scans (
     scan_duration_ms INTEGER,
     error_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
@@ -224,6 +225,7 @@ CREATE TABLE IF NOT EXISTS accessibility_scans (
 CREATE INDEX IF NOT EXISTS idx_accessibility_scans_customer_id ON accessibility_scans(customer_id);
 CREATE INDEX IF NOT EXISTS idx_accessibility_scans_status ON accessibility_scans(scan_status);
 CREATE INDEX IF NOT EXISTS idx_accessibility_scans_created_at ON accessibility_scans(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_accessibility_scans_updated_at ON accessibility_scans(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_accessibility_scans_target_url ON accessibility_scans(target_url);
 
 -- Row Level Security for accessibility_scans
@@ -237,6 +239,7 @@ END $$;
 -- Drop policies if they exist, then recreate them
 DROP POLICY IF EXISTS "Users can view their accessibility scans" ON accessibility_scans;
 DROP POLICY IF EXISTS "Users can insert their accessibility scans" ON accessibility_scans;
+DROP POLICY IF EXISTS "Allow anon role to insert accessibility scans" ON accessibility_scans;
 DROP POLICY IF EXISTS "Service key can bypass RLS for accessibility_scans" ON accessibility_scans;
 
 -- RLS Policies for accessibility_scans
@@ -245,6 +248,10 @@ CREATE POLICY "Users can view their accessibility scans" ON accessibility_scans
 
 CREATE POLICY "Users can insert their accessibility scans" ON accessibility_scans
     FOR INSERT WITH CHECK (customer_id = auth.uid());
+
+-- Allow anon role to insert accessibility scans (for Lambda functions using anon key)
+CREATE POLICY "Allow anon role to insert accessibility scans" ON accessibility_scans
+    FOR INSERT WITH CHECK (auth.role() = 'anon');
 
 -- Allow service key to bypass RLS for insertions (for Lambda functions)
 CREATE POLICY "Service key can bypass RLS for accessibility_scans" ON accessibility_scans

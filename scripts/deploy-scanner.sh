@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-REGION="us-east-1"  # Change to your preferred region
+REGION="eu-west-2"  # Change to your preferred region
 REPOSITORY_NAME="accessibility-scanner"
 IMAGE_TAG="latest"
 
