@@ -10,6 +10,7 @@ jobs:
   build-and-push-docker:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
       packages: write
 
