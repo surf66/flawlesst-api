@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install Node.js dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy source code and TypeScript configuration
 COPY scanner.ts tsconfig.json ./
