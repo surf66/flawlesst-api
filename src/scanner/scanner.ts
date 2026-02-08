@@ -43,7 +43,19 @@ class AccessibilityScanner {
       throw new Error('Missing Supabase configuration');
     }
 
-    this.supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    console.log('Initializing Supabase client...');
+    console.log('SUPABASE_URL:', SUPABASE_URL);
+    console.log('SUPABASE_SERVICE_KEY length:', SUPABASE_SERVICE_KEY.length);
+    console.log('SUPABASE_SERVICE_KEY starts with:', SUPABASE_SERVICE_KEY.substring(0, 20) + '...');
+
+    this.supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+
+    console.log('Supabase client initialized');
   }
 
   async initialize(): Promise<void> {
@@ -193,13 +205,17 @@ class AccessibilityScanner {
       const { data: testData, error: testError } = await this.supabase
         .from('accessibility_scans')
         .select('*')
-        .eq('id', SCAN_ID)
-        .single();
+        .eq('id', SCAN_ID);
 
       if (testError) {
         console.error('Cannot read record:', testError);
       } else {
-        console.log('Successfully read record:', testData.id, testData.scan_status);
+        console.log('Query result count:', testData.length);
+        if (testData.length > 0) {
+          console.log('Successfully read record:', testData[0].id, testData[0].scan_status);
+        } else {
+          console.log('No records found with ID:', SCAN_ID);
+        }
       }
 
       const updateData: any = {
@@ -240,13 +256,14 @@ class AccessibilityScanner {
       const { data: verifyData, error: verifyError } = await this.supabase
         .from('accessibility_scans')
         .select('scan_status, violation_count, updated_at')
-        .eq('id', SCAN_ID)
-        .single();
+        .eq('id', SCAN_ID);
 
       if (verifyError) {
         console.error('Could not verify update:', verifyError);
+      } else if (verifyData.length > 0) {
+        console.log('Verification - current status in DB:', verifyData[0]);
       } else {
-        console.log('Verification - current status in DB:', verifyData);
+        console.log('Verification - no records found');
       }
     } catch (error) {
       console.error('Error saving scan results:', error);
