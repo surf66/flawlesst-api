@@ -74,18 +74,25 @@ class AccessibilityScanner {
     }
 
     try {
-      const { error } = await this.supabase
+      console.log(`Updating scan status to: ${status} for scan ID: ${SCAN_ID}`);
+
+      const { data, error } = await this.supabase
         .from('accessibility_scans')
         .update(updateData)
-        .eq('id', SCAN_ID);
+        .eq('id', SCAN_ID)
+        .select();
 
       if (error) {
         console.error('Failed to update scan status:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        throw error;
       } else {
         console.log(`Updated scan status to: ${status}`);
+        console.log('Updated record:', data);
       }
     } catch (error) {
       console.error('Error updating scan status:', error);
+      throw error;
     }
   }
 
@@ -193,17 +200,27 @@ class AccessibilityScanner {
         updateData.error_message = result.errorMessage;
       }
 
-      const { error } = await this.supabase
+      console.log('Saving scan results with data:', {
+        scan_id: SCAN_ID,
+        status: result.status,
+        violation_count: result.violationCount,
+        duration_ms: result.scanDurationMs
+      });
+
+      const { data, error } = await this.supabase
         .from('accessibility_scans')
         .update(updateData)
-        .eq('id', SCAN_ID);
+        .eq('id', SCAN_ID)
+        .select();
 
       if (error) {
         console.error('Failed to save scan results:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
       console.log('Scan results saved successfully');
+      console.log('Updated record:', data);
     } catch (error) {
       console.error('Error saving scan results:', error);
       throw error;
