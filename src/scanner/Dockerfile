@@ -1,5 +1,5 @@
 # Use the official Playwright image
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
 # Set working directory
 WORKDIR /app
@@ -7,6 +7,10 @@ WORKDIR /app
 # Install Node.js dependencies
 COPY package*.json ./
 RUN npm install --omit=dev
+
+# Install Playwright browsers
+RUN npx playwright install chromium
+RUN npx playwright install-deps chromium
 
 # Copy source code and TypeScript configuration
 COPY scanner.ts tsconfig.json ./
