@@ -8,12 +8,18 @@ DROP POLICY IF EXISTS "Service key can bypass RLS for project_reports" ON projec
 DROP POLICY IF EXISTS "Users can view file analysis for their project reports" ON file_analysis;
 DROP POLICY IF EXISTS "Users can insert file analysis for their project reports" ON file_analysis;
 DROP POLICY IF EXISTS "Service key can bypass RLS for file_analysis" ON file_analysis;
+DROP POLICY IF EXISTS "Users can view their accessibility scans" ON accessibility_scans;
+DROP POLICY IF EXISTS "Users can insert their accessibility scans" ON accessibility_scans;
+DROP POLICY IF EXISTS "Service key can bypass RLS for accessibility_scans" ON accessibility_scans;
 
 -- Create service role policies first (higher priority)
 CREATE POLICY "Service role full access to project_reports" ON project_reports
     FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Service role full access to file_analysis" ON file_analysis
+    FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access to accessibility_scans" ON accessibility_scans
     FOR ALL USING (auth.role() = 'service_role');
 
 -- Then create user policies
@@ -55,6 +61,13 @@ CREATE POLICY "Users can insert file analysis for their project reports" ON file
         )
     );
 
+-- User policies for accessibility scans
+CREATE POLICY "Users can view their accessibility scans" ON accessibility_scans
+    FOR SELECT USING (customer_id = auth.uid());
+
+CREATE POLICY "Users can insert their accessibility scans" ON accessibility_scans
+    FOR INSERT WITH CHECK (customer_id = auth.uid());
+
 -- Verify policies are created correctly
 SELECT 
     schemaname,
@@ -66,5 +79,5 @@ SELECT
     qual,
     with_check
 FROM pg_policies 
-WHERE tablename IN ('project_reports', 'file_analysis')
+WHERE tablename IN ('project_reports', 'file_analysis', 'accessibility_scans')
 ORDER BY tablename, policyname;

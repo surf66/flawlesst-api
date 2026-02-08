@@ -119,12 +119,15 @@ export class FlawlesstApiStack extends Stack {
       })
     );
 
-    // Grant permissions to pass the task execution role
+    // Grant permissions to pass the task execution role and task role
     accessibilityScanRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['iam:PassRole'],
-        resources: [taskDefinition.executionRole?.roleArn || ''],
+        resources: [
+          taskDefinition.executionRole?.roleArn || '',
+          taskDefinition.taskRole.roleArn
+        ],
       })
     );
 
