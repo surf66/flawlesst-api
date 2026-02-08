@@ -390,6 +390,91 @@ components:
           description: Total number of projects for this user
           example: 5
 
+    AccessibilityScanRequest:
+      type: object
+      required:
+        - target_url
+        - customer_id
+      properties:
+        target_url:
+          type: string
+          format: uri
+          description: The URL to scan for accessibility violations
+          example: "https://example.com"
+        customer_id:
+          type: string
+          format: uuid
+          description: Customer identifier for tracking and billing
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    AccessibilityScanResponse:
+      type: object
+      properties:
+        scan_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the accessibility scan
+          example: "987e6543-e21b-32d1-b456-426614174999"
+        status:
+          type: string
+          enum: ["started", "error"]
+          description: Status of the scan request
+          example: "started"
+        message:
+          type: string
+          description: Status message describing the result
+          example: "Accessibility scan started successfully"
+
+    AccessibilityViolation:
+      type: object
+      description: Individual accessibility violation found by axe-core
+      properties:
+        id:
+          type: string
+          description: Rule identifier
+          example: "color-contrast"
+        impact:
+          type: string
+          enum: ["minor", "moderate", "serious", "critical"]
+          description: Severity level of the violation
+          example: "serious"
+        tags:
+          type: array
+          items:
+            type: string
+          description: WCAG tags associated with the violation
+          example: ["wcag2aa", "wcag143"]
+        description:
+          type: string
+          description: Human-readable description of the issue
+          example: "Elements must have sufficient color contrast"
+        help:
+          type: string
+          description: Help text for fixing the issue
+          example: "Elements must have sufficient color contrast"
+        helpUrl:
+          type: string
+          format: uri
+          description: URL to documentation about fixing this issue
+          example: "https://dequeuniversity.com/rules/axe/4.4/color-contrast?application=axeAPI"
+        nodes:
+          type: array
+          description: List of DOM nodes that violate this rule
+          items:
+            type: object
+            properties:
+              html:
+                type: string
+                description: HTML snippet of the violating element
+              target:
+                type: array
+                items:
+                  type: string
+                description: CSS selectors targeting the element
+              failureSummary:
+                type: string
+                description: Summary of why this element fails
+
 paths:
   /health:
     get:
@@ -678,6 +763,76 @@ paths:
                   value:
                     error: "Missing required parameter: userId"
                     message: "userId must be provided as a query parameter"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /accessibility-scan:
+    post:
+      summary: Start accessibility scan
+      description: |
+        Starts an accessibility scan using Playwright and axe-core for the specified URL.
+        The scan runs in an ephemeral AWS Fargate container and results are stored in Supabase.
+        This endpoint returns immediately with a scan_id that can be used to track progress.
+        
+        The scanning process:
+        1. Creates a scan record in Supabase with 'pending' status
+        2. Starts a Fargate task with Playwright and axe-core
+        3. The container scans the target URL for accessibility violations
+        4. Results are stored in Supabase with detailed violation information
+        5. Status is updated to 'completed' or 'failed'
+        
+        Scan results include WCAG violations, impact levels, and specific DOM elements
+        that need attention.
+      operationId: triggerAccessibilityScan
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessibilityScanRequest"
+            examples:
+              validRequest:
+                summary: Valid accessibility scan request
+                value:
+                  target_url: "https://example.com"
+                  customer_id: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "202":
+          description: Accessibility scan started successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessibilityScanResponse"
+              examples:
+                scanStarted:
+                  summary: Scan initiated successfully
+                  value:
+                    scan_id: "987e6543-e21b-32d1-b456-426614174999"
+                    status: "started"
+                    message: "Accessibility scan started successfully"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missingFields:
+                  summary: Missing required fields
+                  value:
+                    error: "Missing required fields: target_url and customer_id"
+                    message: "Both target_url and customer_id must be provided"
+                invalidUrl:
+                  summary: Invalid URL format
+                  value:
+                    error: "Invalid target_url format"
+                    message: "target_url must be a valid URL"
         "500":
           description: Internal server error
           content:

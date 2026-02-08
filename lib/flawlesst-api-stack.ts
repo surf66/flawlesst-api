@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, CfnOutput } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, CfnOutput, RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
@@ -7,6 +7,9 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as path from 'path';
 
 export class FlawlesstApiStack extends Stack {
@@ -24,6 +27,106 @@ export class FlawlesstApiStack extends Stack {
     const sourceBucket = new s3.Bucket(this, 'SourceCodeBucket', {
       versioned: false,
     });
+
+    // Create VPC for Fargate tasks
+    const vpc = new ec2.Vpc(this, 'AccessibilityScanVpc', {
+      maxAzs: 2,
+      natGateways: 1,
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'public',
+          subnetType: ec2.SubnetType.PUBLIC,
+        },
+        {
+          cidrMask: 24,
+          name: 'private',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+        },
+      ],
+    });
+
+    // Create security group for Fargate tasks
+    const fargateSecurityGroup = new ec2.SecurityGroup(this, 'FargateSecurityGroup', {
+      vpc: vpc,
+      description: 'Security group for accessibility scanner Fargate tasks',
+      allowAllOutbound: true,
+    });
+
+    // Allow outbound HTTPS traffic
+    fargateSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS outbound');
+    fargateSecurityGroup.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP outbound');
+
+    // Create ECS Cluster
+    const cluster = new ecs.Cluster(this, 'AccessibilityScanCluster', {
+      vpc: vpc,
+      clusterName: 'accessibility-scan-cluster',
+    });
+
+    // Create ECR Repository for the scanner image
+    const scannerRepository = new ecr.Repository(this, 'AccessibilityScannerRepository', {
+      repositoryName: 'accessibility-scanner',
+      removalPolicy: RemovalPolicy.DESTROY, // Change to RETAIN for production
+    });
+
+    // Create Task Definition for the accessibility scanner
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'AccessibilityScannerTask', {
+      memoryLimitMiB: 2048,
+      cpu: 1024,
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.X86_64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+      },
+    });
+
+    // Add container to task definition
+    const scannerContainer = taskDefinition.addContainer('accessibility-scanner', {
+      image: ecs.ContainerImage.fromEcrRepository(scannerRepository, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'accessibility-scanner' }),
+      environment: {
+        NODE_ENV: 'production',
+      },
+    });
+
+    // Grant the task execution role permissions to pull from ECR
+    if (taskDefinition.executionRole) {
+      taskDefinition.executionRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy')
+      );
+    }
+
+    // Create IAM role for the accessibility scan Lambda
+    const accessibilityScanRole = new iam.Role(this, 'AccessibilityScanLambdaRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+
+    // Grant permissions to run ECS tasks
+    accessibilityScanRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecs:RunTask',
+          'ecs:DescribeTasks',
+          'ecs:StopTask',
+        ],
+        resources: [
+          taskDefinition.taskDefinitionArn,
+          cluster.clusterArn,
+        ],
+      })
+    );
+
+    // Grant permissions to pass the task execution role
+    accessibilityScanRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['iam:PassRole'],
+        resources: [taskDefinition.executionRole?.roleArn || ''],
+      })
+    );
 
     const cloneRepoLambda = new nodejs.NodejsFunction(this, 'CloneRepoLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -475,6 +578,48 @@ export class FlawlesstApiStack extends Stack {
       operationName: 'GetUserProjects',
       methodResponses: [{
         statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
+    // Accessibility scan endpoint
+    const accessibilityScanLambda = new nodejs.NodejsFunction(this, 'AccessibilityScanLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/trigger-accessibility-scan/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(30),
+      role: accessibilityScanRole,
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+        TASK_DEFINITION_ARN: taskDefinition.taskDefinitionArn,
+        CLUSTER_NAME: cluster.clusterName,
+        SUBNETS: vpc.privateSubnets.map(subnet => subnet.subnetId).join(','),
+        SECURITY_GROUPS: fargateSecurityGroup.securityGroupId,
+        ASSIGN_PUBLIC_IP: 'true', // Set to 'false' for production with NAT gateway
+        DEPLOYMENT_REGION: this.region,
+      },
+      bundling: {
+        nodeModules: ['@aws-sdk/client-ecs', '@supabase/supabase-js', 'uuid'],
+        forceDockerBundling: false,
+        externalModules: ['@aws-sdk/client-ecs'],
+      },
+    });
+
+    const accessibilityScanResource = api.root.addResource('accessibility-scan');
+    accessibilityScanResource.addMethod('POST', new apigw.LambdaIntegration(accessibilityScanLambda), {
+      apiKeyRequired: true,
+      operationName: 'TriggerAccessibilityScan',
+      methodResponses: [{
+        statusCode: '202',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }, {
+        statusCode: '400',
         responseModels: {
           'application/json': apigw.Model.EMPTY_MODEL
         }

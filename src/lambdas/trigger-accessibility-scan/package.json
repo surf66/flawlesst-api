@@ -1,0 +1,16 @@
+{
+  "name": "trigger-accessibility-scan",
+  "version": "1.0.0",
+  "description": "Lambda function to trigger accessibility scanning via Fargate",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-ecs": "^3.943.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.6.0"
+  }
+}
