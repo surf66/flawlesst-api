@@ -188,6 +188,20 @@ class AccessibilityScanner {
     }
 
     try {
+      // Debug: Test if we can read the record first
+      console.log('Testing Supabase connection and permissions...');
+      const { data: testData, error: testError } = await this.supabase
+        .from('accessibility_scans')
+        .select('*')
+        .eq('id', SCAN_ID)
+        .single();
+
+      if (testError) {
+        console.error('Cannot read record:', testError);
+      } else {
+        console.log('Successfully read record:', testData.id, testData.scan_status);
+      }
+
       const updateData: any = {
         scan_status: result.status,
         violations: result.violations,
@@ -221,6 +235,19 @@ class AccessibilityScanner {
 
       console.log('Scan results saved successfully');
       console.log('Updated record:', data);
+
+      // Verify the update actually worked by reading it back
+      const { data: verifyData, error: verifyError } = await this.supabase
+        .from('accessibility_scans')
+        .select('scan_status, violation_count, updated_at')
+        .eq('id', SCAN_ID)
+        .single();
+
+      if (verifyError) {
+        console.error('Could not verify update:', verifyError);
+      } else {
+        console.log('Verification - current status in DB:', verifyData);
+      }
     } catch (error) {
       console.error('Error saving scan results:', error);
       throw error;
