@@ -147,9 +147,15 @@ class AccessibilityScanner {
         clip: { x: 0, y: 0, width: 1280, height: 720 }
       });
 
-      // Upload screenshot to Supabase storage
-      const screenshotUrl = await this.uploadScreenshot(screenshot, SCAN_ID || '');
-      console.log('Screenshot uploaded to:', screenshotUrl);
+      // Upload screenshot to Supabase storage (with error handling)
+      let screenshotUrl: string | undefined;
+      try {
+        screenshotUrl = await this.uploadScreenshot(screenshot, SCAN_ID || '');
+        console.log('Screenshot uploaded to:', screenshotUrl);
+      } catch (error) {
+        console.error('Failed to upload screenshot, continuing without it:', error);
+        screenshotUrl = undefined;
+      }
 
       // Inject axe-core
       console.log('Injecting axe-core...');
