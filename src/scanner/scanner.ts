@@ -31,6 +31,7 @@ interface ScanResult {
   violations: AccessibilityViolation[];
   violationCount: number;
   scanDurationMs: number;
+  screenshotUrl?: string;
   errorMessage?: string;
 }
 
@@ -138,6 +139,18 @@ class AccessibilityScanner {
       // Wait a bit for any dynamic content to load
       await page.waitForTimeout(2000);
 
+      // Take screenshot before running accessibility scan
+      console.log('Taking screenshot...');
+      const screenshot = await page.screenshot({
+        type: 'png',
+        fullPage: false,
+        clip: { x: 0, y: 0, width: 1280, height: 720 }
+      });
+
+      // Upload screenshot to Supabase storage
+      const screenshotUrl = await this.uploadScreenshot(screenshot, SCAN_ID || '');
+      console.log('Screenshot uploaded to:', screenshotUrl);
+
       // Inject axe-core
       console.log('Injecting axe-core...');
       await injectAxe(page);
@@ -167,7 +180,8 @@ class AccessibilityScanner {
         status: 'completed',
         violations: violations as AccessibilityViolation[],
         violationCount,
-        scanDurationMs: scanDuration
+        scanDurationMs: scanDuration,
+        screenshotUrl
       };
 
     } catch (error) {
@@ -190,6 +204,34 @@ class AccessibilityScanner {
       if (page) {
         await page.close();
       }
+    }
+  }
+
+  async uploadScreenshot(screenshot: Buffer, scanId: string): Promise<string> {
+    try {
+      const fileName = `accessibility-screenshots/${scanId}.png`;
+
+      const { data, error } = await this.supabase.storage
+        .from('screenshots')
+        .upload(fileName, screenshot, {
+          contentType: 'image/png',
+          upsert: true
+        });
+
+      if (error) {
+        console.error('Failed to upload screenshot:', error);
+        throw error;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = this.supabase.storage
+        .from('screenshots')
+        .getPublicUrl(fileName);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading screenshot:', error);
+      throw error;
     }
   }
 
@@ -225,6 +267,10 @@ class AccessibilityScanner {
         scan_duration_ms: result.scanDurationMs,
         completed_at: new Date().toISOString()
       };
+
+      if (result.screenshotUrl) {
+        updateData.screenshot_url = result.screenshotUrl;
+      }
 
       if (result.errorMessage) {
         updateData.error_message = result.errorMessage;
