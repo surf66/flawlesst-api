@@ -8,6 +8,7 @@ const CUSTOMER_ID = process.env.CUSTOMER_ID;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SCAN_ID = process.env.SCAN_ID;
+const SCAN_NAME = process.env.SCAN_NAME;
 
 interface AccessibilityViolation {
   id: string;
@@ -27,6 +28,7 @@ interface ScanResult {
   scanId: string;
   customerId: string;
   targetUrl: string;
+  name?: string;
   status: 'completed' | 'failed';
   violations: AccessibilityViolation[];
   violationCount: number;
@@ -183,6 +185,7 @@ class AccessibilityScanner {
         scanId: SCAN_ID || '',
         customerId: CUSTOMER_ID || '',
         targetUrl: url,
+        name: SCAN_NAME || undefined,
         status: 'completed',
         violations: violations as AccessibilityViolation[],
         violationCount,
@@ -200,6 +203,7 @@ class AccessibilityScanner {
         scanId: SCAN_ID || '',
         customerId: CUSTOMER_ID || '',
         targetUrl: url,
+        name: SCAN_NAME || undefined,
         status: 'failed',
         violations: [],
         violationCount: 0,
@@ -273,6 +277,10 @@ class AccessibilityScanner {
         scan_duration_ms: result.scanDurationMs,
         completed_at: new Date().toISOString()
       };
+
+      if (result.name) {
+        updateData.name = result.name;
+      }
 
       if (result.screenshotUrl) {
         updateData.screenshot_url = result.screenshotUrl;

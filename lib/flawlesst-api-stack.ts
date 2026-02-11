@@ -10,6 +10,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
 
 export class FlawlesstApiStack extends Stack {
@@ -627,6 +629,35 @@ export class FlawlesstApiStack extends Stack {
           'application/json': apigw.Model.EMPTY_MODEL
         }
       }]
+    });
+
+    // EventBridge rule for daily scheduled accessibility scans at 4am UTC
+    const dailyAccessibilityScanRule = new events.Rule(this, 'DailyAccessibilityScanRule', {
+      description: 'Trigger daily accessibility scans for all user URLs at 4am UTC',
+      schedule: events.Schedule.cron({
+        minute: '0',
+        hour: '4',
+        month: '*',
+        weekDay: '*',
+        year: '*'
+      }),
+      enabled: true
+    });
+
+    // Add the accessibility scan lambda as a target for the scheduled rule
+    dailyAccessibilityScanRule.addTarget(new targets.LambdaFunction(accessibilityScanLambda, {
+      event: events.RuleTargetInput.fromObject({
+        mode: 'scheduled'
+      })
+    }));
+
+    // Grant EventBridge permissions to invoke the lambda
+    accessibilityScanLambda.grantInvoke(new iam.ServicePrincipal('events.amazonaws.com'));
+
+    // Output the EventBridge rule ARN for reference
+    new CfnOutput(this, 'DailyAccessibilityScanRuleArn', {
+      value: dailyAccessibilityScanRule.ruleArn,
+      description: 'ARN of the daily accessibility scan EventBridge rule'
     });
 
     // Output the API URL and API key information
