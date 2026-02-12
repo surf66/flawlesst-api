@@ -221,7 +221,7 @@ class AccessibilityScanner {
     try {
       const fileName = `accessibility-screenshots/${scanId}.png`;
 
-      const { data, error } = await this.supabase.storage
+      const { error } = await this.supabase.storage
         .from('screenshots')
         .upload(fileName, screenshot, {
           contentType: 'image/png',
