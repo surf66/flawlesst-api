@@ -654,6 +654,133 @@ export class FlawlesstApiStack extends Stack {
     // Grant EventBridge permissions to invoke the lambda
     accessibilityScanLambda.grantInvoke(new iam.ServicePrincipal('events.amazonaws.com'));
 
+    // PageSpeed scan endpoint
+    const pageSpeedScanLambda = new nodejs.NodejsFunction(this, 'PageSpeedScanLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/trigger-pagespeed-scan/index.ts'),
+      handler: 'handler',
+      memorySize: 512,
+      timeout: Duration.minutes(2),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+        GOOGLE_PAGESPEED_API_KEY: process.env.GOOGLE_PAGESPEED_API_KEY ?? '',
+        DEPLOYMENT_REGION: this.region,
+      },
+      bundling: {
+        nodeModules: ['@supabase/supabase-js', 'uuid'],
+        forceDockerBundling: false,
+        externalModules: ['@supabase/supabase-js'],
+      },
+    });
+
+    const pageSpeedScanResource = api.root.addResource('pagespeed-scan');
+    pageSpeedScanResource.addMethod('POST', new apigw.LambdaIntegration(pageSpeedScanLambda), {
+      apiKeyRequired: true,
+      operationName: 'TriggerPageSpeedScan',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }, {
+        statusCode: '400',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
+    // EventBridge rule for daily scheduled PageSpeed scans at 4am UTC
+    const dailyPageSpeedScanRule = new events.Rule(this, 'DailyPageSpeedScanRule', {
+      description: 'Trigger daily PageSpeed scans for all user URLs at 4am UTC',
+      schedule: events.Schedule.cron({
+        minute: '0',
+        hour: '4',
+        month: '*',
+        weekDay: '*',
+        year: '*'
+      }),
+      enabled: true
+    });
+
+    // Add the PageSpeed scan lambda as a target for the scheduled rule
+    dailyPageSpeedScanRule.addTarget(new targets.LambdaFunction(pageSpeedScanLambda, {
+      event: events.RuleTargetInput.fromObject({
+        mode: 'scheduled',
+        strategy: 'desktop'
+      })
+    }));
+
+    // Grant EventBridge permissions to invoke the lambda
+    pageSpeedScanLambda.grantInvoke(new iam.ServicePrincipal('events.amazonaws.com'));
+
+    // Output the EventBridge rule ARN for reference
+    new CfnOutput(this, 'DailyPageSpeedScanRuleArn', {
+      value: dailyPageSpeedScanRule.ruleArn,
+      description: 'ARN of the daily PageSpeed scan EventBridge rule'
+    });
+
+    // Get PageSpeed results endpoint
+    const getPageSpeedResultsLambda = new nodejs.NodejsFunction(this, 'GetPageSpeedResultsLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/get-pagespeed-results/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(30),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: ['@supabase/supabase-js'],
+        forceDockerBundling: false,
+        externalModules: ['@supabase/supabase-js'],
+      },
+    });
+
+    const getPageSpeedResultsResource = pageSpeedScanResource.addResource('results');
+    getPageSpeedResultsResource.addMethod('GET', new apigw.LambdaIntegration(getPageSpeedResultsLambda), {
+      apiKeyRequired: true,
+      operationName: 'GetPageSpeedResults',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
+    // Get PageSpeed analytics endpoint
+    const getPageSpeedAnalyticsLambda = new nodejs.NodejsFunction(this, 'GetPageSpeedAnalyticsLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/get-pagespeed-analytics/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(30),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: ['@supabase/supabase-js'],
+        forceDockerBundling: false,
+        externalModules: ['@supabase/supabase-js'],
+      },
+    });
+
+    const getPageSpeedAnalyticsResource = pageSpeedScanResource.addResource('analytics');
+    getPageSpeedAnalyticsResource.addMethod('GET', new apigw.LambdaIntegration(getPageSpeedAnalyticsLambda), {
+      apiKeyRequired: true,
+      operationName: 'GetPageSpeedAnalytics',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
+
     // Output the EventBridge rule ARN for reference
     new CfnOutput(this, 'DailyAccessibilityScanRuleArn', {
       value: dailyAccessibilityScanRule.ruleArn,
