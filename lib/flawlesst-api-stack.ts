@@ -654,13 +654,33 @@ export class FlawlesstApiStack extends Stack {
     // Grant EventBridge permissions to invoke the lambda
     accessibilityScanLambda.grantInvoke(new iam.ServicePrincipal('events.amazonaws.com'));
 
-    // PageSpeed scan endpoint
+    // PageSpeed scan endpoint - updated for async processing
     const pageSpeedScanLambda = new nodejs.NodejsFunction(this, 'PageSpeedScanLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, '../src/lambdas/trigger-pagespeed-scan/index.ts'),
       handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10), // Reduced timeout since it's now async
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+        PAGE_SPEED_STATE_MACHINE_ARN: '', // Will be set after state machine creation
+        DEPLOYMENT_REGION: this.region,
+      },
+      bundling: {
+        nodeModules: ['@supabase/supabase-js', 'uuid', '@aws-sdk/client-sfn'],
+        forceDockerBundling: false,
+        externalModules: ['@supabase/supabase-js', '@aws-sdk/client-sfn'],
+      },
+    });
+
+    // Create the async PageSpeed processing Lambda
+    const pageSpeedProcessLambda = new nodejs.NodejsFunction(this, 'PageSpeedProcessLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/process-pagespeed-scan/index.ts'),
+      handler: 'handler',
       memorySize: 512,
-      timeout: Duration.minutes(2),
+      timeout: Duration.minutes(5), // Longer timeout for PageSpeed API calls
       environment: {
         SUPABASE_URL: process.env.SUPABASE_URL ?? '',
         SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
@@ -668,23 +688,52 @@ export class FlawlesstApiStack extends Stack {
         DEPLOYMENT_REGION: this.region,
       },
       bundling: {
-        nodeModules: ['@supabase/supabase-js', 'uuid'],
+        nodeModules: ['@supabase/supabase-js'],
         forceDockerBundling: false,
         externalModules: ['@supabase/supabase-js'],
       },
     });
+
+    // Create Step Function for PageSpeed scan processing
+    const pageSpeedProcessTask = new tasks.LambdaInvoke(this, 'PageSpeedProcessTask', {
+      lambdaFunction: pageSpeedProcessLambda,
+      payload: sfn.TaskInput.fromObject({
+        'scan_id.$': '$.scan_id',
+        'target_url.$': '$.target_url',
+        'customer_id.$': '$.customer_id',
+        'strategy.$': '$.strategy'
+      }),
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+
+    const pageSpeedStateMachine = new sfn.StateMachine(this, 'PageSpeedStateMachine', {
+      definition: pageSpeedProcessTask,
+      timeout: Duration.minutes(10),
+      stateMachineName: 'PageSpeedScanProcessor'
+    });
+
+    // Update the trigger Lambda with the state machine ARN
+    pageSpeedScanLambda.addEnvironment('PAGE_SPEED_STATE_MACHINE_ARN', pageSpeedStateMachine.stateMachineArn);
+
+    // Grant the trigger Lambda permissions to start the Step Function
+    pageSpeedStateMachine.grantStartExecution(pageSpeedScanLambda);
 
     const pageSpeedScanResource = api.root.addResource('pagespeed-scan');
     pageSpeedScanResource.addMethod('POST', new apigw.LambdaIntegration(pageSpeedScanLambda), {
       apiKeyRequired: true,
       operationName: 'TriggerPageSpeedScan',
       methodResponses: [{
-        statusCode: '200',
+        statusCode: '202',
         responseModels: {
           'application/json': apigw.Model.EMPTY_MODEL
         }
       }, {
         statusCode: '400',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }, {
+        statusCode: '500',
         responseModels: {
           'application/json': apigw.Model.EMPTY_MODEL
         }
@@ -721,7 +770,40 @@ export class FlawlesstApiStack extends Stack {
       description: 'ARN of the daily PageSpeed scan EventBridge rule'
     });
 
-    // Get PageSpeed results endpoint
+    // Get PageSpeed scan status endpoint
+    const getPageSpeedScanStatusLambda = new nodejs.NodejsFunction(this, 'GetPageSpeedScanStatusLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../src/lambdas/get-pagespeed-scan-status/index.ts'),
+      handler: 'handler',
+      memorySize: 256,
+      timeout: Duration.seconds(10),
+      environment: {
+        SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ?? '',
+      },
+      bundling: {
+        nodeModules: ['@supabase/supabase-js'],
+        forceDockerBundling: false,
+        externalModules: ['@supabase/supabase-js'],
+      },
+    });
+
+    const getPageSpeedScanStatusResource = pageSpeedScanResource.addResource('{scanId}');
+    getPageSpeedScanStatusResource.addMethod('GET', new apigw.LambdaIntegration(getPageSpeedScanStatusLambda), {
+      apiKeyRequired: true,
+      operationName: 'GetPageSpeedScanStatus',
+      methodResponses: [{
+        statusCode: '200',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }, {
+        statusCode: '404',
+        responseModels: {
+          'application/json': apigw.Model.EMPTY_MODEL
+        }
+      }]
+    });
     const getPageSpeedResultsLambda = new nodejs.NodejsFunction(this, 'GetPageSpeedResultsLambda', {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, '../src/lambdas/get-pagespeed-results/index.ts'),

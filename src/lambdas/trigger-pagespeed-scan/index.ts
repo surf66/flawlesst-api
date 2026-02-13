@@ -1,9 +1,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { v4 as uuidv4 } from 'uuid';
+
+const sfn = new SFNClient({ region: process.env.DEPLOYMENT_REGION });
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-const GOOGLE_PAGESPEED_API_KEY = process.env.GOOGLE_PAGESPEED_API_KEY!;
+const PAGE_SPEED_STATE_MACHINE_ARN = process.env.PAGE_SPEED_STATE_MACHINE_ARN!;
 
 interface PageSpeedScanInput {
   target_url?: string;
@@ -25,45 +28,6 @@ interface PageSpeedScanResponse {
   message: string;
 }
 
-interface PageSpeedScanRecord {
-  id: string;
-  customer_id: string;
-  target_url: string;
-  scan_status: 'pending' | 'running' | 'completed' | 'failed';
-  performance_score?: number;
-  first_contentful_paint?: number;
-  largest_contentful_paint?: number;
-  first_input_delay?: number;
-  cumulative_layout_shift?: number;
-  seo_score?: number;
-  accessibility_score?: number;
-  best_practices_score?: number;
-  full_response: any;
-  strategy: 'desktop' | 'mobile';
-  error_message?: string;
-  scan_duration_ms?: number;
-  created_at: string;
-  updated_at: string;
-  completed_at?: string;
-}
-
-interface GooglePageSpeedResponse {
-  lighthouseResult: {
-    categories: {
-      performance: { score: number };
-      seo: { score: number };
-      accessibility: { score: number };
-      'best-practices': { score: number };
-    };
-    audits: {
-      'first-contentful-paint': { numericValue: number };
-      'largest-contentful-paint': { numericValue: number };
-      'max-potential-fid': { numericValue: number };
-      'cumulative-layout-shift': { numericValue: number };
-    };
-  };
-}
-
 class PageSpeedScanTrigger {
   private supabase: SupabaseClient;
 
@@ -78,20 +42,11 @@ class PageSpeedScanTrigger {
   async createScanRecord(customerId: string, targetUrl: string, strategy: 'desktop' | 'mobile' = 'desktop'): Promise<string> {
     const scanId = uuidv4();
 
-    const scanRecord: Partial<PageSpeedScanRecord> = {
+    const scanRecord: any = {
       id: scanId,
       customer_id: customerId,
       target_url: targetUrl,
       scan_status: 'pending',
-      performance_score: undefined,
-      first_contentful_paint: undefined,
-      largest_contentful_paint: undefined,
-      first_input_delay: undefined,
-      cumulative_layout_shift: undefined,
-      seo_score: undefined,
-      accessibility_score: undefined,
-      best_practices_score: undefined,
-      full_response: {},
       strategy: strategy,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -115,135 +70,35 @@ class PageSpeedScanTrigger {
     }
   }
 
-  async callPageSpeedAPI(url: string, strategy: 'desktop' | 'mobile' = 'desktop'): Promise<GooglePageSpeedResponse> {
-    if (!GOOGLE_PAGESPEED_API_KEY) {
-      throw new Error('Google PageSpeed API key is not configured');
-    }
+  async startStepFunction(scanId: string, targetUrl: string, customerId: string, strategy: 'desktop' | 'mobile'): Promise<void> {
+    const input = {
+      scan_id: scanId,
+      target_url: targetUrl,
+      customer_id: customerId,
+      strategy: strategy
+    };
 
-    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${GOOGLE_PAGESPEED_API_KEY}`;
-
-    console.log(`Calling PageSpeed API for URL: ${url} with strategy: ${strategy}`);
+    const command = new StartExecutionCommand({
+      stateMachineArn: PAGE_SPEED_STATE_MACHINE_ARN,
+      name: `pagespeed-scan-${scanId}`,
+      input: JSON.stringify(input)
+    });
 
     try {
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`PageSpeed API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json() as GooglePageSpeedResponse;
-      console.log('PageSpeed API call successful');
-      return data;
+      const result = await sfn.send(command);
+      console.log(`Started Step Function execution: ${result.executionArn}`);
     } catch (error) {
-      console.error('Failed to call PageSpeed API:', error);
+      console.error('Failed to start Step Function:', error);
       throw error;
     }
   }
 
-  async extractMetrics(pageSpeedData: GooglePageSpeedResponse): Promise<{
-    performance_score: number;
-    first_contentful_paint: number;
-    largest_contentful_paint: number;
-    first_input_delay: number;
-    cumulative_layout_shift: number;
-    seo_score: number;
-    accessibility_score: number;
-    best_practices_score: number;
-  }> {
-    const { lighthouseResult } = pageSpeedData;
-
-    // Helper function to safely extract score with fallback
-    const getScore = (category: any): number => {
-      return category && category.score !== undefined ? Math.round(category.score * 100) : 0;
-    };
-
-    // Helper function to safely extract audit numeric value with fallback
-    const getAuditValue = (audits: any, auditName: string): number => {
-      const audit = audits && audits[auditName];
-      return audit && audit.numericValue !== undefined ? Math.round(audit.numericValue) : 0;
-    };
-
-    // Helper function to safely extract audit numeric value as float with fallback
-    const getAuditFloatValue = (audits: any, auditName: string): number => {
-      const audit = audits && audits[auditName];
-      return audit && audit.numericValue !== undefined ? parseFloat(audit.numericValue.toFixed(3)) : 0;
-    };
-
-    return {
-      performance_score: getScore(lighthouseResult?.categories?.performance),
-      first_contentful_paint: getAuditValue(lighthouseResult?.audits, 'first-contentful-paint'),
-      largest_contentful_paint: getAuditValue(lighthouseResult?.audits, 'largest-contentful-paint'),
-      first_input_delay: getAuditValue(lighthouseResult?.audits, 'max-potential-fid'),
-      cumulative_layout_shift: getAuditFloatValue(lighthouseResult?.audits, 'cumulative-layout-shift'),
-      seo_score: getScore(lighthouseResult?.categories?.seo),
-      accessibility_score: getScore(lighthouseResult?.categories?.accessibility),
-      best_practices_score: getScore(lighthouseResult?.categories?.['best-practices'])
-    };
-  }
-
-  async updateScanRecord(scanId: string, metrics: any, fullResponse: GooglePageSpeedResponse, scanDuration: number): Promise<void> {
-    const updateData: any = {
-      scan_status: 'completed',
-      performance_score: metrics.performance_score,
-      first_contentful_paint: metrics.first_contentful_paint,
-      largest_contentful_paint: metrics.largest_contentful_paint,
-      first_input_delay: metrics.first_input_delay,
-      cumulative_layout_shift: metrics.cumulative_layout_shift,
-      seo_score: metrics.seo_score,
-      accessibility_score: metrics.accessibility_score,
-      best_practices_score: metrics.best_practices_score,
-      full_response: fullResponse,
-      scan_duration_ms: scanDuration,
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
+  async validateUrl(url: string): Promise<boolean> {
     try {
-      const { error } = await this.supabase
-        .from('pagespeed_scans')
-        .update(updateData)
-        .eq('id', scanId);
-
-      if (error) {
-        console.error('Failed to update PageSpeed scan record:', error);
-        throw error;
-      }
-
-      console.log(`Updated PageSpeed scan ${scanId} with metrics`);
-    } catch (error) {
-      console.error('Error updating PageSpeed scan record:', error);
-      throw error;
-    }
-  }
-
-  async updateScanStatus(scanId: string, status: 'pending' | 'running' | 'completed' | 'failed', errorMessage?: string): Promise<void> {
-    const updateData: any = {
-      scan_status: status,
-      updated_at: new Date().toISOString()
-    };
-
-    if (status === 'completed') {
-      updateData.completed_at = new Date().toISOString();
-    }
-
-    if (errorMessage) {
-      updateData.error_message = errorMessage;
-    }
-
-    try {
-      const { error } = await this.supabase
-        .from('pagespeed_scans')
-        .update(updateData)
-        .eq('id', scanId);
-
-      if (error) {
-        console.error('Failed to update PageSpeed scan status:', error);
-      } else {
-        console.log(`Updated PageSpeed scan ${scanId} status to: ${status}`);
-      }
-    } catch (error) {
-      console.error('Error updating PageSpeed scan status:', error);
+      new URL(url);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -267,47 +122,6 @@ class PageSpeedScanTrigger {
       return data || [];
     } catch (error) {
       console.error('Error fetching user accessibility URLs:', error);
-      throw error;
-    }
-  }
-
-  async validateUrl(url: string): Promise<boolean> {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async performPageSpeedScan(scanId: string, targetUrl: string, strategy: 'desktop' | 'mobile' = 'desktop'): Promise<void> {
-    const startTime = Date.now();
-
-    try {
-      // Update status to running
-      await this.updateScanStatus(scanId, 'running');
-
-      // Call PageSpeed API
-      const pageSpeedData = await this.callPageSpeedAPI(targetUrl, strategy);
-
-      // Extract metrics
-      const metrics = await this.extractMetrics(pageSpeedData);
-
-      // Calculate scan duration
-      const scanDuration = Date.now() - startTime;
-
-      // Update scan record with results
-      await this.updateScanRecord(scanId, metrics, pageSpeedData, scanDuration);
-
-      console.log(`PageSpeed scan completed successfully for ${targetUrl}`);
-      console.log(`Performance score: ${metrics.performance_score}, Strategy: ${strategy}`);
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('PageSpeed scan failed:', errorMessage);
-
-      // Update scan record to failed status
-      await this.updateScanStatus(scanId, 'failed', errorMessage);
       throw error;
     }
   }
@@ -348,7 +162,7 @@ export const handler = async (event: any): Promise<APIGatewayResponse> => {
     const strategy = requestBody.strategy || 'desktop';
 
     if (mode === 'scheduled') {
-      // Scheduled mode: scan all URLs from user_accessibility_urls table
+      // Scheduled mode: start async scans for all URLs from user_accessibility_urls table
       console.log('Starting scheduled PageSpeed scans for all URLs');
 
       const userUrls = await trigger.getUserAccessibilityUrls();
@@ -369,10 +183,10 @@ export const handler = async (event: any): Promise<APIGatewayResponse> => {
 
       const scanResults: PageSpeedScanResponse[] = [];
 
-      // Process each URL
+      // Start async scans for each URL
       for (const urlRecord of userUrls) {
         try {
-          console.log(`Processing URL: ${urlRecord.url} (Name: ${urlRecord.name})`);
+          console.log(`Starting async scan for URL: ${urlRecord.url} (Name: ${urlRecord.name})`);
 
           // Validate URL format
           if (!await trigger.validateUrl(urlRecord.url)) {
@@ -388,30 +202,30 @@ export const handler = async (event: any): Promise<APIGatewayResponse> => {
           // Create scan record
           const scanId = await trigger.createScanRecord(urlRecord.user_id, urlRecord.url, strategy);
 
-          // Perform PageSpeed scan
-          await trigger.performPageSpeedScan(scanId, urlRecord.url, strategy);
+          // Start Step Function for async processing
+          await trigger.startStepFunction(scanId, urlRecord.url, urlRecord.user_id, strategy);
 
           scanResults.push({
             scan_id: scanId,
-            status: 'completed',
-            message: `PageSpeed scan completed for ${urlRecord.name}`
+            status: 'pending',
+            message: `PageSpeed scan started for ${urlRecord.name}`
           });
 
-          console.log(`Successfully completed scan for ${urlRecord.name}: ${scanId}`);
+          console.log(`Successfully started scan for ${urlRecord.name}: ${scanId}`);
 
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-          console.error(`Failed to scan ${urlRecord.url}:`, errorMessage);
+          console.error(`Failed to start scan for ${urlRecord.url}:`, errorMessage);
 
           scanResults.push({
             scan_id: '',
             status: 'error',
-            message: `Failed to scan ${urlRecord.name}: ${errorMessage}`
+            message: `Failed to start scan for ${urlRecord.name}: ${errorMessage}`
           });
         }
       }
 
-      console.log(`Scheduled PageSpeed scan execution completed. Completed: ${scanResults.filter(r => r.status === 'completed').length}, Failed: ${scanResults.filter(r => r.status === 'error').length}`);
+      console.log(`Scheduled PageSpeed scan initiation completed. Started: ${scanResults.filter(r => r.status === 'pending').length}, Failed: ${scanResults.filter(r => r.status === 'error').length}`);
 
       return {
         statusCode: 200,
@@ -423,9 +237,8 @@ export const handler = async (event: any): Promise<APIGatewayResponse> => {
           scans: scanResults
         })
       };
-
     } else {
-      // Individual mode: existing behavior for backward compatibility
+      // Individual mode: async "fire and forget" approach
       // Support both snake_case and camelCase field names for compatibility
       const target_url = requestBody.target_url || (requestBody as any).targetUrl;
       const customer_id = requestBody.customer_id || (requestBody as any).customerId;
@@ -461,26 +274,26 @@ export const handler = async (event: any): Promise<APIGatewayResponse> => {
         };
       }
 
-      console.log(`Starting PageSpeed scan for URL: ${target_url}`);
+      console.log(`Starting async PageSpeed scan for URL: ${target_url}`);
       console.log(`Customer ID: ${customer_id}`);
       console.log(`Strategy: ${strategy}`);
 
       // Create scan record
       const scanId = await trigger.createScanRecord(customer_id, target_url, strategy);
 
-      // Perform PageSpeed scan
-      await trigger.performPageSpeedScan(scanId, target_url, strategy);
+      // Start Step Function for async processing
+      await trigger.startStepFunction(scanId, target_url, customer_id, strategy);
 
       return {
-        statusCode: 200,
+        statusCode: 202,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
           scan_id: scanId,
-          status: 'completed',
-          message: 'PageSpeed scan completed successfully'
+          status: 'pending',
+          message: 'PageSpeed scan started. Check status using the scan ID.'
         })
       };
     }
