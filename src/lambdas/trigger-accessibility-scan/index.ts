@@ -1,6 +1,7 @@
 import { ECSClient, RunTaskCommand } from '@aws-sdk/client-ecs';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 const ecs = new ECSClient({ region: process.env.DEPLOYMENT_REGION });
 
@@ -238,11 +239,48 @@ class AccessibilityScanTrigger {
   }
 }
 
-export const handler = async (event: AccessibilityScanInput): Promise<APIGatewayResponse> => {
+export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayResponse> => {
+  // Parse the request body from API Gateway
+  let requestBody: AccessibilityScanInput;
+  try {
+    if (!event.body) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+        },
+        body: JSON.stringify({
+          scan_id: '',
+          status: 'error',
+          message: 'Request body is required'
+        })
+      };
+    }
+    requestBody = JSON.parse(event.body);
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+      },
+      body: JSON.stringify({
+        scan_id: '',
+        status: 'error',
+        message: 'Invalid JSON in request body'
+      })
+    };
+  }
+
   const trigger = new AccessibilityScanTrigger();
 
   try {
-    const mode = event.mode || 'individual';
+    const mode = requestBody.mode || 'individual';
 
     if (mode === 'scheduled') {
       // Scheduled mode: scan all URLs from user_accessibility_urls table
@@ -309,7 +347,7 @@ export const handler = async (event: AccessibilityScanInput): Promise<APIGateway
 
     } else {
       // Individual mode: existing behavior for backward compatibility
-      const { target_url, customer_id } = event;
+      const { target_url, customer_id } = requestBody;
 
       if (!target_url || !customer_id) {
         return trigger.formatResponse(400, {
