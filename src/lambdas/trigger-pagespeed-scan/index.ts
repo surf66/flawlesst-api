@@ -382,7 +382,9 @@ export const handler = async (event: PageSpeedScanInput): Promise<APIGatewayResp
 
     } else {
       // Individual mode: existing behavior for backward compatibility
-      const { target_url, customer_id } = event;
+      // Support both snake_case and camelCase field names for compatibility
+      const target_url = event.target_url || (event as any).targetUrl;
+      const customer_id = event.customer_id || (event as any).customerId;
 
       if (!target_url || !customer_id) {
         return {
