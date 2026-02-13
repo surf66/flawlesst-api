@@ -13,6 +13,12 @@ interface PageSpeedScanInput {
   strategy?: 'desktop' | 'mobile';
 }
 
+interface APIGatewayResponse {
+  statusCode: number;
+  headers: { [key: string]: string };
+  body: string;
+}
+
 interface PageSpeedScanResponse {
   scan_id: string;
   status: string;
@@ -290,7 +296,7 @@ class PageSpeedScanTrigger {
   }
 }
 
-export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanResponse | { scans: PageSpeedScanResponse[] }> => {
+export const handler = async (event: PageSpeedScanInput): Promise<APIGatewayResponse> => {
   const trigger = new PageSpeedScanTrigger();
 
   try {
@@ -306,7 +312,14 @@ export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanR
 
       if (userUrls.length === 0) {
         return {
-          scans: []
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            scans: []
+          })
         };
       }
 
@@ -357,7 +370,14 @@ export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanR
       console.log(`Scheduled PageSpeed scan execution completed. Completed: ${scanResults.filter(r => r.status === 'completed').length}, Failed: ${scanResults.filter(r => r.status === 'error').length}`);
 
       return {
-        scans: scanResults
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          scans: scanResults
+        })
       };
 
     } else {
@@ -366,18 +386,32 @@ export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanR
 
       if (!target_url || !customer_id) {
         return {
-          scan_id: '',
-          status: 'error',
-          message: 'Missing required fields: target_url and customer_id'
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            scan_id: '',
+            status: 'error',
+            message: 'Missing required fields: target_url and customer_id'
+          })
         };
       }
 
       // Validate URL format
       if (!await trigger.validateUrl(target_url)) {
         return {
-          scan_id: '',
-          status: 'error',
-          message: 'Invalid target_url format'
+          statusCode: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          body: JSON.stringify({
+            scan_id: '',
+            status: 'error',
+            message: 'Invalid target_url format'
+          })
         };
       }
 
@@ -392,9 +426,16 @@ export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanR
       await trigger.performPageSpeedScan(scanId, target_url, strategy);
 
       return {
-        scan_id: scanId,
-        status: 'completed',
-        message: 'PageSpeed scan completed successfully'
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify({
+          scan_id: scanId,
+          status: 'completed',
+          message: 'PageSpeed scan completed successfully'
+        })
       };
     }
 
@@ -403,9 +444,16 @@ export const handler = async (event: PageSpeedScanInput): Promise<PageSpeedScanR
     console.error('PageSpeed scan trigger failed:', errorMessage);
 
     return {
-      scan_id: '',
-      status: 'error',
-      message: `Failed to start PageSpeed scan: ${errorMessage}`
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        scan_id: '',
+        status: 'error',
+        message: `Failed to start PageSpeed scan: ${errorMessage}`
+      })
     };
   }
 };
