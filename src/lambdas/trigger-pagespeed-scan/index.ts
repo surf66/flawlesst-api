@@ -299,6 +299,12 @@ class PageSpeedScanTrigger {
 export const handler = async (event: PageSpeedScanInput): Promise<APIGatewayResponse> => {
   const trigger = new PageSpeedScanTrigger();
 
+  // Debug logging to see what's being received
+  console.log('Received event:', JSON.stringify(event, null, 2));
+  console.log('Event keys:', Object.keys(event));
+  console.log('target_url:', event.target_url);
+  console.log('customer_id:', event.customer_id);
+
   try {
     const mode = event.mode || 'individual';
     const strategy = event.strategy || 'desktop';
