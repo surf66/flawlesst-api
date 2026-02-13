@@ -296,18 +296,39 @@ class PageSpeedScanTrigger {
   }
 }
 
-export const handler = async (event: PageSpeedScanInput): Promise<APIGatewayResponse> => {
+export const handler = async (event: any): Promise<APIGatewayResponse> => {
   const trigger = new PageSpeedScanTrigger();
 
+  // Parse the request body from API Gateway
+  let requestBody: PageSpeedScanInput;
+  try {
+    requestBody = event.body ? JSON.parse(event.body) : {};
+  } catch (error) {
+    console.error('Failed to parse request body:', error);
+    return {
+      statusCode: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        scan_id: '',
+        status: 'error',
+        message: 'Invalid JSON in request body'
+      })
+    };
+  }
+
   // Debug logging to see what's being received
-  console.log('Received event:', JSON.stringify(event, null, 2));
-  console.log('Event keys:', Object.keys(event));
-  console.log('target_url:', event.target_url);
-  console.log('customer_id:', event.customer_id);
+  console.log('Received event body:', event.body);
+  console.log('Parsed requestBody:', JSON.stringify(requestBody, null, 2));
+  console.log('RequestBody keys:', Object.keys(requestBody));
+  console.log('target_url:', requestBody.target_url);
+  console.log('customer_id:', requestBody.customer_id);
 
   try {
-    const mode = event.mode || 'individual';
-    const strategy = event.strategy || 'desktop';
+    const mode = requestBody.mode || 'individual';
+    const strategy = requestBody.strategy || 'desktop';
 
     if (mode === 'scheduled') {
       // Scheduled mode: scan all URLs from user_accessibility_urls table
@@ -389,8 +410,8 @@ export const handler = async (event: PageSpeedScanInput): Promise<APIGatewayResp
     } else {
       // Individual mode: existing behavior for backward compatibility
       // Support both snake_case and camelCase field names for compatibility
-      const target_url = event.target_url || (event as any).targetUrl;
-      const customer_id = event.customer_id || (event as any).customerId;
+      const target_url = requestBody.target_url || (requestBody as any).targetUrl;
+      const customer_id = requestBody.customer_id || (requestBody as any).customerId;
 
       if (!target_url || !customer_id) {
         return {
