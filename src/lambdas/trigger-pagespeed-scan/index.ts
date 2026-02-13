@@ -153,15 +153,32 @@ class PageSpeedScanTrigger {
   }> {
     const { lighthouseResult } = pageSpeedData;
 
+    // Helper function to safely extract score with fallback
+    const getScore = (category: any): number => {
+      return category && category.score !== undefined ? Math.round(category.score * 100) : 0;
+    };
+
+    // Helper function to safely extract audit numeric value with fallback
+    const getAuditValue = (audits: any, auditName: string): number => {
+      const audit = audits && audits[auditName];
+      return audit && audit.numericValue !== undefined ? Math.round(audit.numericValue) : 0;
+    };
+
+    // Helper function to safely extract audit numeric value as float with fallback
+    const getAuditFloatValue = (audits: any, auditName: string): number => {
+      const audit = audits && audits[auditName];
+      return audit && audit.numericValue !== undefined ? parseFloat(audit.numericValue.toFixed(3)) : 0;
+    };
+
     return {
-      performance_score: Math.round(lighthouseResult.categories.performance.score * 100),
-      first_contentful_paint: Math.round(lighthouseResult.audits['first-contentful-paint'].numericValue),
-      largest_contentful_paint: Math.round(lighthouseResult.audits['largest-contentful-paint'].numericValue),
-      first_input_delay: Math.round(lighthouseResult.audits['max-potential-fid'].numericValue),
-      cumulative_layout_shift: parseFloat(lighthouseResult.audits['cumulative-layout-shift'].numericValue.toFixed(3)),
-      seo_score: Math.round(lighthouseResult.categories.seo.score * 100),
-      accessibility_score: Math.round(lighthouseResult.categories.accessibility.score * 100),
-      best_practices_score: Math.round(lighthouseResult.categories['best-practices'].score * 100)
+      performance_score: getScore(lighthouseResult?.categories?.performance),
+      first_contentful_paint: getAuditValue(lighthouseResult?.audits, 'first-contentful-paint'),
+      largest_contentful_paint: getAuditValue(lighthouseResult?.audits, 'largest-contentful-paint'),
+      first_input_delay: getAuditValue(lighthouseResult?.audits, 'max-potential-fid'),
+      cumulative_layout_shift: getAuditFloatValue(lighthouseResult?.audits, 'cumulative-layout-shift'),
+      seo_score: getScore(lighthouseResult?.categories?.seo),
+      accessibility_score: getScore(lighthouseResult?.categories?.accessibility),
+      best_practices_score: getScore(lighthouseResult?.categories?.['best-practices'])
     };
   }
 
