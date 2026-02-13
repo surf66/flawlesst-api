@@ -25,6 +25,12 @@ interface AccessibilityScanResponse {
   message: string;
 }
 
+interface APIGatewayResponse {
+  statusCode: number;
+  headers: { [key: string]: string };
+  body: string;
+}
+
 interface ScanRecord {
   id: string;
   customer_id: string;
@@ -48,6 +54,19 @@ class AccessibilityScanTrigger {
     }
 
     this.supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  }
+
+  public formatResponse(statusCode: number, data: any): APIGatewayResponse {
+    return {
+      statusCode,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+      },
+      body: JSON.stringify(data)
+    };
   }
 
   async createScanRecord(customerId: string, targetUrl: string, name?: string): Promise<string> {
@@ -219,7 +238,7 @@ class AccessibilityScanTrigger {
   }
 }
 
-export const handler = async (event: AccessibilityScanInput): Promise<AccessibilityScanResponse | { scans: AccessibilityScanResponse[] }> => {
+export const handler = async (event: AccessibilityScanInput): Promise<APIGatewayResponse> => {
   const trigger = new AccessibilityScanTrigger();
 
   try {
@@ -233,9 +252,9 @@ export const handler = async (event: AccessibilityScanInput): Promise<Accessibil
       console.log(`Found ${userUrls.length} URLs to scan`);
 
       if (userUrls.length === 0) {
-        return {
+        return trigger.formatResponse(200, {
           scans: []
-        };
+        });
       }
 
       const scanResults: AccessibilityScanResponse[] = [];
@@ -284,29 +303,29 @@ export const handler = async (event: AccessibilityScanInput): Promise<Accessibil
 
       console.log(`Scheduled scan execution completed. Started: ${scanResults.filter(r => r.status === 'started').length}, Failed: ${scanResults.filter(r => r.status === 'error').length}`);
 
-      return {
+      return trigger.formatResponse(200, {
         scans: scanResults
-      };
+      });
 
     } else {
       // Individual mode: existing behavior for backward compatibility
       const { target_url, customer_id } = event;
 
       if (!target_url || !customer_id) {
-        return {
+        return trigger.formatResponse(400, {
           scan_id: '',
           status: 'error',
           message: 'Missing required fields: target_url and customer_id'
-        };
+        });
       }
 
       // Validate URL format
       if (!await trigger.validateUrl(target_url)) {
-        return {
+        return trigger.formatResponse(400, {
           scan_id: '',
           status: 'error',
           message: 'Invalid target_url format'
-        };
+        });
       }
 
       console.log(`Starting accessibility scan for URL: ${target_url}`);
@@ -318,21 +337,21 @@ export const handler = async (event: AccessibilityScanInput): Promise<Accessibil
       // Trigger Fargate task
       await trigger.triggerFargateTask(scanId, target_url, customer_id);
 
-      return {
+      return trigger.formatResponse(202, {
         scan_id: scanId,
         status: 'started',
         message: 'Accessibility scan started successfully'
-      };
+      });
     }
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error('Accessibility scan trigger failed:', errorMessage);
 
-    return {
+    return trigger.formatResponse(500, {
       scan_id: '',
       status: 'error',
       message: `Failed to start accessibility scan: ${errorMessage}`
-    };
+    });
   }
 };
